@@ -362,7 +362,7 @@ function showIntro() {
 function onSimEvent(type, d) {
   const sim = session?.sim;
   switch (type) {
-    case 'tp': if (sim) { sim.me.x = d.x; sim.me.z = d.z; if (d.yaw != null) { ctl.yaw = d.yaw; ctl.pitch = 0; } else sfx('whoosh'); } break;
+    case 'tp': if (sim) { sim.me.x = Number(d.x) || 0; sim.me.z = Number(d.z) || 0; if (d.yaw != null) { ctl.yaw = d.yaw; ctl.pitch = 0; } else sfx('whoosh'); } break;
     case 'taskDone': toast(d.all ? t('allDone') : t('taskDone'), 'good'); break;
     case 'detainedMe': closeGame(true); banner(t('detainedYou'), t('detainedGhost'), true); sfx('detention'); setGhost(myGim, true); break;
     case 'detention': if (sim && sim.me.role === 'teacher') sfx('detention'); break;
@@ -662,8 +662,9 @@ function updateHUD() {
 }
 
 /* ---- meeting ---- */
-const avHTML = (look, dead) => `<span class="av${dead ? ' dead' : ''}" style="--c:${look.color}"></span>`;
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeColor = c => /^#[0-9a-f]{6}$/i.test(c) ? c : '#cccccc';
+const avHTML = (look, dead) => `<span class="av${dead ? ' dead' : ''}" style="--c:${safeColor(look?.color)}"></span>`;
 function renderMeeting() {
   const s = session.sim, m = s.meeting; if (!m) return;
   const el = $('#meeting'); el.classList.add('show'); releaseLock();
@@ -682,7 +683,7 @@ function renderMeeting() {
     for (const p of cands) {
       const voted = m.votes.has(p.id);
       const canVote = p.alive && (isHM || (me.alive && !m.votes.has(me.id)));
-      html += `<button class="vote${selVote === p.id || myVote === p.id ? ' mine' : ''}${p.alive ? '' : ' dead'}" data-id="${p.id}" ${canVote ? '' : 'disabled'}>${avHTML(p.look, !p.alive)}<span>${esc(p.name)}${p.id === me.id ? ' (' + t('you') + ')' : ''}</span>${voted ? `<span class="tag">${t('voted')}</span>` : ''}</button>`;
+      html += `<button class="vote${selVote === p.id || myVote === p.id ? ' mine' : ''}${p.alive ? '' : ' dead'}" data-id="${esc(p.id)}" ${canVote ? '' : 'disabled'}>${avHTML(p.look, !p.alive)}<span>${esc(p.name)}${p.id === me.id ? ' (' + t('you') + ')' : ''}</span>${voted ? `<span class="tag">${t('voted')}</span>` : ''}</button>`;
     }
     html += `</div><div class="chat"><div class="chat-log" id="chat-log">`;
     for (const c of m.chat) {
@@ -737,7 +738,8 @@ function showEnd(r) {
   $('#meeting').classList.remove('show'); meetingShown = false;
   const titles = { 'solo-win': t('winSolo'), 'solo-lose-time': t('loseSolo'), 'solo-lose-caught': t('loseSolo'), students: t('winStudents'), teacher: t('winTeacher'), hm: t('hmEnded') };
   const whys = { 'solo-win': '', 'solo-lose-time': t('loseTime'), 'solo-lose-caught': t('loseCaught'), students: t('winStudentsWhy'), teacher: t('winTeacherWhy'), hm: '' };
-  store.stars += s.starsEarned; save();
+  const earned = Math.max(0, Math.min(300, Math.floor(Number(s.starsEarned) || 0)));
+  store.stars += earned; save();
   let roster = '';
   if (s.mode !== 'solo') {
     roster = '<div class="roster">' + s.list.filter(p => p.role !== 'headmistress').map(p =>
@@ -745,7 +747,7 @@ function showEnd(r) {
   }
   const el = $('#end');
   el.innerHTML = `<div class="endcard ${r.meWon ? '' : 'lose'}"><h2>${titles[r.winner]}</h2><p>${whys[r.winner] || ''}</p>
-    <div class="earned">${t('earned', { n: s.starsEarned })}</div>${roster}
+    <div class="earned">${t('earned', { n: earned })}</div>${roster}
     <div class="btns">${session.mode === 'online' && !session.host ? `<p class="note" style="flex:1;align-self:center">${t('waitHost')}</p>` : `<button class="chunky green" id="e-again">${session.mode === 'online' ? t('backLobby') : t('playAgain')}</button>`}<button class="chunky navy" id="e-menu">${t('menu')}</button></div></div>`;
   el.classList.add('show');
   sfx(r.meWon ? 'win' : 'lose');
@@ -769,7 +771,7 @@ function renderHM() {
   html += `<div><h4>🎒 ${t('hmPlayers')}</h4><p class="hm-note">${t('hmSeeTeacher')}</p><div style="display:grid;gap:6px">`;
   for (const q of students) {
     html += `<div class="hm-student">${avHTML(q.look, !q.alive)}<div class="nm ${q.role === 'teacher' ? 'teacher' : ''}">${esc(q.name)}${q.role === 'teacher' ? ' 😈' : ''}<small>${q.points} ${t('points').toLowerCase()}${q.alive ? '' : ' · 👻'}${q.frozenUntil > s.time ? ' · 📝' : ''}</small></div>
-      <div class="btns"><button class="r" data-a="detention" data-id="${q.id}">📝 ${t('hmDetention')}</button><button data-a="lines" data-id="${q.id}">✍️ ${t('hmLines')}</button><button data-a="plus" data-id="${q.id}">⭐ ${t('hmPlus')}</button><button data-a="minus" data-id="${q.id}">${t('hmMinus')}</button>${q.human && session.host ? `<button data-mute="${q.id}">${s.muted.has(q.id) ? '🔇 ' + t('unmute') : '💬 ' + t('mute')}</button><button class="k" data-kick="${q.id}">✕ ${t('hmKick')}</button>` : ''}</div></div>`;
+      <div class="btns"><button class="r" data-a="detention" data-id="${esc(q.id)}">📝 ${t('hmDetention')}</button><button data-a="lines" data-id="${esc(q.id)}">✍️ ${t('hmLines')}</button><button data-a="plus" data-id="${esc(q.id)}">⭐ ${t('hmPlus')}</button><button data-a="minus" data-id="${esc(q.id)}">${t('hmMinus')}</button>${q.human && session.host ? `<button data-mute="${esc(q.id)}">${s.muted.has(q.id) ? '🔇 ' + t('unmute') : '💬 ' + t('mute')}</button><button class="k" data-kick="${esc(q.id)}">✕ ${t('hmKick')}</button>` : ''}</div></div>`;
   }
   html += '</div></div></div>';
   const focusText = document.activeElement?.id === 'hm-text' ? $('#hm-text').value : null;

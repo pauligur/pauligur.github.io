@@ -289,8 +289,8 @@ const GAMES = {
 
   lines(body, set, done, data, hint) {
     hint.textContent = t('lines');
-    const sentence = data?.sentence || 'I will not run in the corridors.';
-    const s = el('div', 'lines-s', '“' + sentence + '”');
+    const sentence = String(data?.sentence || 'I will not run in the corridors.').slice(0, 80);
+    const s = el('div', 'lines-s'); s.textContent = '“' + sentence + '”';
     const inp = el('input', 'lines-in'); inp.autocomplete = 'off'; inp.spellcheck = false;
     const btn = el('button', 'big-btn small', t('linesBtn'));
     body.append(s, inp, btn);

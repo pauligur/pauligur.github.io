@@ -2,6 +2,10 @@
 // friends' browsers send their moves and actions, and draw what the host tells them.
 import { Sim, PHRASES } from './sim.js';
 import { cleanChat } from './chat.js';
+import { STATIONS } from './world.js';
+
+const ROLES = ['student', 'teacher', 'headmistress'];
+const STATION_IDS = new Set(STATIONS.map(s => s.id));
 
 const PREFIX = 'tbs-pauligur-v1-';
 const LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -263,17 +267,27 @@ export class RemoteSim {
   get starsEarned() { return this.me.stars ?? 0; }
 
   applyState(S) {
-    this.time = S.time; this.phase = S.phase; this.chatOn = S.chatOn; this.amMuted = S.muted; this.taskDone = S.taskDone; this.taskTotal = S.taskTotal; this.sabReady = S.sabReady;
-    this.sab = S.sab; this.result = S.result; this.bodies = S.bodies;
+    this.time = num(S.time); this.phase = ['play', 'meeting', 'end'].includes(S.phase) ? S.phase : 'play';
+    this.chatOn = S.chatOn !== false; this.amMuted = !!S.muted;
+    this.taskDone = num(S.taskDone); this.taskTotal = Math.max(1, num(S.taskTotal)); this.sabReady = num(S.sabReady);
+    this.sab = S.sab && { kind: String(S.sab.kind), until: num(S.sab.until), fireA: !!S.sab.fireA, fireB: !!S.sab.fireB };
+    this.result = S.result && { winner: String(S.result.winner) };
+    this.bodies = (S.bodies || []).map(b => ({ id: String(b.id), x: num(b.x), z: num(b.z), name: String(b.name ?? '').slice(0, 20), look: cleanLook(b.look) }));
     const seen = new Set();
     for (const sp of S.players) {
+      if (typeof sp?.id !== 'string' || sp.id.length > 64) continue;
       seen.add(sp.id);
       let r = this.players.get(sp.id);
       const first = !r;
       if (!r) { r = { x: sp.x, z: sp.z, ry: sp.ry, tx: sp.x, tz: sp.z, try: sp.ry, moving: false, tasks: [], done: new Set(), sus: {}, path: [], ai: {} }; this.players.set(sp.id, r); }
-      const { x, z, ry, tasks, done, ...rest } = sp;
-      Object.assign(r, rest);
-      if (tasks) { r.tasks = tasks; r.done = new Set(done); }
+      const { x, z, ry, tasks, done } = sp;
+      Object.assign(r, {
+        id: sp.id, name: String(sp.name ?? '').slice(0, 20), look: cleanLook(sp.look),
+        role: ROLES.includes(sp.role) ? sp.role : 'student', alive: !!sp.alive, revealed: !!sp.revealed,
+        points: num(sp.points), frozenUntil: num(sp.frozenUntil), npc: !!sp.npc, bot: !!sp.bot, human: !!sp.human,
+        killReady: num(sp.killReady), bellUsed: !!sp.bellUsed, stars: Math.max(0, Math.min(300, num(sp.stars))),
+      });
+      if (Array.isArray(tasks)) { r.tasks = tasks.filter(id => STATION_IDS.has(id)); r.done = new Set((done || []).filter(id => STATION_IDS.has(id))); }
       if (sp.id === this.meId) { if (first || !this.gotState) { r.x = x; r.z = z; r.ry = ry; } }
       else if (first) { r.x = r.tx = x; r.z = r.tz = z; r.ry = r.try = ry; }
     }
@@ -288,9 +302,9 @@ export class RemoteSim {
     } else this.meeting = null;
   }
   applyPositions(P) {
-    for (const [id, x, z, ry, mv] of P.d) {
+    for (const [id, x, z, ry, mv] of P.d || []) {
       const r = this.players.get(id); if (!r) continue;
-      r.tx = x; r.tz = z; r.try = ry; r.moving = !!mv;
+      r.tx = num(x); r.tz = num(z); r.try = num(ry); r.moving = !!mv;
     }
   }
   dirtyEvent() { /* the next state snapshot follows right after */ }

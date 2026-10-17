@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sus at TBS</title>
+<meta name="description" content="A school mystery game: find the mean teacher before everyone gets detention!">
+<link rel="icon" href="assets/badge.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="shade"></div>
+
+<!-- ============ HOME ============ -->
+<section class="screen show" id="s-home">
+  <div class="home-left">
+    <div class="brand">
+      <img src="assets/badge.svg" alt="" class="badge">
+      <div>
+        <h1 class="title">SUS <span>at</span> TBS</h1>
+        <p class="tagline" data-i18n="tagline"></p>
+      </div>
+    </div>
+    <nav class="main-menu">
+      <button class="chunky green" data-go="s-play"><span class="ico">▶</span><span data-i18n="play"></span></button>
+      <button class="chunky gold" data-go="s-inventory"><span class="ico">🎒</span><span data-i18n="inventory"></span></button>
+      <button class="chunky navy" data-go="s-settings"><span class="ico">⚙️</span><span data-i18n="settings"></span></button>
+    </nav>
+  </div>
+  <div class="home-right">
+    <div class="stars-chip"><span>⭐</span><b class="stars-n">0</b></div>
+    <div class="preview-slot" id="home-preview"></div>
+    <div class="nameplate"><span class="name-n">pauligur</span></div>
+  </div>
+</section>
+
+<!-- ============ PLAY ============ -->
+<section class="screen" id="s-play">
+  <header class="bar"><button class="back" data-go="s-home">‹ <span data-i18n="back"></span></button><h2 data-i18n="play"></h2><span></span></header>
+  <div class="cards two">
+    <button class="card solo" id="btn-solo">
+      <div class="card-art">🧹</div>
+      <h3 data-i18n="solo"></h3>
+      <p data-i18n="soloDesc"></p>
+    </button>
+    <button class="card online" data-go="s-online">
+      <div class="card-art">🌐</div>
+      <h3 data-i18n="online"></h3>
+      <p data-i18n="onlineDesc"></p>
+    </button>
+  </div>
+</section>
+
+<!-- ============ ONLINE ============ -->
+<section class="screen" id="s-online">
+  <header class="bar"><button class="back" data-go="s-play">‹ <span data-i18n="back"></span></button><h2 data-i18n="online"></h2><span></span></header>
+  <div class="cards two">
+    <div class="card static">
+      <h3 data-i18n="createRoom"></h3>
+      <p class="muted" data-i18n="chooseRole"></p>
+      <div class="roles">
+        <label class="role"><input type="radio" name="role" value="headmistress" checked><span class="role-ico">👩‍🏫</span><b data-i18n="roleHM"></b><small data-i18n="roleHMDesc"></small></label>
+        <label class="role"><input type="radio" name="role" value="student"><span class="role-ico">🎒</span><b data-i18n="roleStudent"></b><small data-i18n="roleStudentRoom"></small></label>
+      </div>
+      <button class="chunky green small" id="btn-create" data-i18n="createRoom"></button>
+      <p class="note" id="create-msg"></p>
+    </div>
+    <div class="card static">
+      <h3 data-i18n="joinRoom"></h3>
+      <input id="code-in" class="code-in" maxlength="4" data-i18n-ph="enterCode" autocomplete="off">
+      <button class="chunky gold small" id="btn-join" data-i18n="join"></button>
+      <p class="note" id="join-msg"></p>
+      <hr class="sep">
+      <h3 class="small-h" data-i18n="practice"></h3>
+      <p class="muted" data-i18n="practiceDesc"></p>
+      <div class="practice-btns">
+        <button class="pbtn" data-practice="headmistress">👩‍🏫 <span data-i18n="roleHM"></span></button>
+        <button class="pbtn" data-practice="student">🎒 <span data-i18n="roleStudent"></span></button>
+        <button class="pbtn" data-practice="teacher">😈 <span data-i18n="roleTeacher"></span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOBBY ============ -->
+<section class="screen" id="s-lobby">
+  <header class="bar"><button class="back" id="lobby-leave">‹ <span data-i18n="leave"></span></button><h2 data-i18n="lobby"></h2><span></span></header>
+  <div class="lobby">
+    <div class="code-box">
+      <small data-i18n="roomCode"></small>
+      <div class="code" id="lobby-code">····</div>
+      <small data-i18n="shareCode"></small>
+    </div>
+    <ul class="lobby-list" id="lobby-list"></ul>
+    <div class="lchat">
+      <div class="lchat-log" id="lchat-log"></div>
+      <div class="chat-row"><input id="lchat-in" maxlength="80" autocomplete="off" data-i18n-ph="chatPh"><button id="lchat-send" data-i18n="hmSend"></button></div>
+    </div>
+    <div class="host-only bots-row"><span>💬 <b data-i18n="freeChat"></b></span><button class="toggle on" id="chat-toggle"><i></i></button></div>
+    <div class="host-only bots-row"><span>🤖 <b data-i18n="botsLabel"></b></span>
+      <div class="stepper"><button id="bots-minus">−</button><b id="bots-n">0</b><button id="bots-plus">+</button></div></div>
+    <p class="note" id="lobby-note"></p>
+    <button class="chunky green host-only" id="btn-start"><span class="ico">▶</span><span data-i18n="start"></span></button>
+  </div>
+</section>
+
+<!-- ============ INVENTORY ============ -->
+<section class="screen" id="s-inventory">
+  <header class="bar"><button class="back" data-go="s-home">‹ <span data-i18n="back"></span></button><h2 data-i18n="inventory"></h2><div class="stars-chip"><span>⭐</span><b class="stars-n">0</b></div></header>
+  <div class="inv">
+    <div class="inv-stage">
+      <div class="preview-slot big" id="inv-preview"></div>
+      <label class="name-field"><span data-i18n="yourName"></span><input id="name-in" maxlength="12" autocomplete="off"><small data-i18n="nameHint"></small></label>
+    </div>
+    <div class="inv-side">
+      <div class="tabs" id="inv-tabs">
+        <button data-tab="styles" class="on" data-i18n="styles"></button>
+        <button data-tab="color" data-i18n="colour"></button>
+        <button data-tab="hat" data-i18n="hats"></button>
+        <button data-tab="hair" data-i18n="hairTab"></button>
+        <button data-tab="outfit" data-i18n="outfits"></button>
+        <button data-tab="acc" data-i18n="extras"></button>
+      </div>
+      <div class="inv-grid" id="inv-grid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="screen" id="s-settings">
+  <header class="bar"><button class="back" id="settings-back">‹ <span data-i18n="back"></span></button><h2 data-i18n="settings"></h2><span></span></header>
+  <div class="settings">
+    <div class="row"><span>🌎 <b data-i18n="language"></b></span>
+      <div class="seg" id="set-lang"><button data-v="en">English</button><button data-v="es">Español</button></div></div>
+    <div class="row"><span>🔊 <b data-i18n="sound"></b></span><button class="toggle" id="set-sound"><i></i></button></div>
+    <div class="row"><span>🎵 <b data-i18n="musicSet"></b></span><button class="toggle" id="set-music"><i></i></button></div>
+    <div class="row"><span>🎚️ <b data-i18n="volume"></b></span><input type="range" min="0" max="1" step="0.05" id="set-volume"></div>
+    <div class="row"><span>🖱️ <b data-i18n="sensitivity"></b></span><input type="range" min="0.3" max="2.5" step="0.1" id="set-sens"></div>
+  </div>
+</section>
+
+<!-- ============ IN-GAME HUD ============ -->
+<div id="hud" hidden>
+  <div class="hud-top">
+    <div class="taskbar"><span data-i18n="taskBar"></span><div class="tbar"><div class="fill" id="taskfill"></div></div></div>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="tasklist" id="tasklist"></div>
+  <div class="rolechip" id="rolechip"></div>
+  <div class="room-label" id="room-label"></div>
+  <div class="banner" id="banner"></div>
+  <div class="toasts" id="toasts"></div>
+  <div class="crosshair"></div>
+  <div class="prompt" id="prompt"></div>
+  <div class="look-hint" id="look-hint" data-i18n="clickToLook"></div>
+  <div class="frozen" id="frozen"></div>
+  <div class="actions" id="actions">
+    <button class="act" id="a-use"><span class="k">E</span><span class="ai">✋</span><span class="al" data-i18n="use"></span></button>
+    <button class="act red" id="a-detain"><span class="k">Q</span><span class="ai">📝</span><span class="al" data-i18n="detain"></span><i class="cd"></i></button>
+    <button class="act" id="a-sab"><span class="k">F</span><span class="ai">⚡</span><span class="al" data-i18n="sabotage"></span><i class="cd"></i></button>
+    <button class="act" id="a-door"><span class="k">V</span><span class="ai">🚪</span><span class="al" data-i18n="staffDoor"></span></button>
+    <button class="act gold" id="a-panel"><span class="k">H</span><span class="ai">👩‍🏫</span><span class="al" data-i18n="panel"></span></button>
+    <button class="act small" id="a-map"><span class="k">M</span><span class="ai">🗺️</span></button>
+    <button class="act small" id="a-view"><span class="k">C</span><span class="ai">🎥</span></button>
+    <button class="act small" id="a-pause"><span class="k">Esc</span><span class="ai">⏸</span></button>
+  </div>
+  <div class="sab-menu" id="sab-menu">
+    <button data-sab="lights">💡 <span data-i18n="sabLights"></span></button>
+    <button data-sab="fire">🔥 <span data-i18n="sabFire"></span></button>
+    <button data-sab="quiz">📝 <span data-i18n="sabQuiz"></span></button>
+  </div>
+  <div class="joy" id="joy"><div class="joy-knob"></div></div>
+</div>
+
+<div id="map" class="overlay"><div class="map-card"><canvas id="mapc" width="1120" height="680"></canvas></div></div>
+<div id="modal" class="overlay"></div>
+<div id="intro" class="overlay"></div>
+<div id="meeting" class="overlay"></div>
+<div id="end" class="overlay"></div>
+<div id="hmpanel" class="side-panel"></div>
+<div id="pause" class="overlay">
+  <div class="panel narrow">
+    <h2 data-i18n="paused"></h2>
+    <button class="chunky green small" id="p-resume" data-i18n="resume"></button>
+    <button class="chunky navy small" id="p-settings" data-i18n="settings"></button>
+    <button class="chunky red small" id="p-quit" data-i18n="quit"></button>
+  </div>
+</div>
+<div id="loading"><img src="assets/badge.svg" alt=""><div class="dots"><i></i><i></i><i></i></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

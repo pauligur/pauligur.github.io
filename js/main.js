@@ -792,6 +792,13 @@ function renderHM() {
 }
 
 /* ---- map ---- */
+// short room names for the map: plan codes lose their prefix ("S1 05" -> "05")
+const PLAN_NO = { class1: '18', classJ1: '02', classJ2: '04', class2: '06', class3: '08' };
+function mapName(key) {
+  if (PLAN_NO[key]) return PLAN_NO[key];
+  const m = /^(S1|J1|EYC1) (\d+)$/.exec(key); if (m) return m[2];
+  return t('m_' + key) === 'm_' + key ? t(key) : t('m_' + key);
+}
 function drawMap() {
   const cv = $('#mapc'), g = cv.getContext('2d'), s = session.sim, me = s.me;
   const W = cv.width, H = cv.height, X0 = -146, Z0 = -90, SX = W / 292, SZ = H / 180;
@@ -815,19 +822,26 @@ function drawMap() {
     R({ x0: b.x0 - 0.6, z0: b.z0 - 0.6, x1: b.x1 + 0.6, z1: b.z1 + 0.6 }, '#14285a');
     for (const r of b.rooms) { R(r, '#fff8ea'); g.strokeStyle = '#c9bfa6'; g.lineWidth = 1; g.strokeRect(px(r.x0), pz(r.z0), (r.x1 - r.x0) * SX, (r.z1 - r.z0) * SZ); }
   }
-  g.font = '600 12px Fredoka, sans-serif'; g.fillStyle = '#14285a';
+  // room labels: short map names, drawn only if they fit inside the room (rotated when the room is tall)
+  g.fillStyle = '#14285a';
   for (const b of BUILDINGS) for (const r of b.rooms) {
-    if (r.key === 'corridor' || r.key === 'jcorridor' || r.key === 'wc') continue;
-    const w = (r.x1 - r.x0) * SX;
-    const label = t(r.key);
-    g.save(); g.translate(px((r.x0 + r.x1) / 2), pz((r.z0 + r.z1) / 2)); if (w < 40) g.rotate(-Math.PI / 2);
-    const room = (w < 40 ? (r.z1 - r.z0) * SZ : w) - 6;
-    let fs = 12; g.font = `600 ${fs}px Fredoka, sans-serif`;
-    while (fs > 7 && g.measureText(label).width > room) g.font = `600 ${--fs}px Fredoka, sans-serif`;
-    g.fillText(label, 0, 0); g.restore();
+    if (r.key === 'corridor' || r.key === 'jcorridor') continue;
+    const label = mapName(r.key), w = (r.x1 - r.x0) * SX - 4, h = (r.z1 - r.z0) * SZ - 3;
+    const fit = (len, thick) => { for (let fs = 13; fs >= 8; fs--) { g.font = `600 ${fs}px Fredoka, sans-serif`; if (g.measureText(label).width <= len && fs <= thick) return fs; } return 0; };
+    const flat = fit(w, h), up = fit(h, w);
+    if (!flat && !up) continue;
+    g.save(); g.translate(px((r.x0 + r.x1) / 2), pz((r.z0 + r.z1) / 2));
+    if (up > flat) g.rotate(-Math.PI / 2);
+    g.font = `600 ${Math.max(flat, up)}px Fredoka, sans-serif`; g.fillText(label, 0, 1); g.restore();
   }
   g.font = '600 14px Fredoka, sans-serif'; g.fillStyle = 'rgba(255,255,255,.9)';
-  for (const f of FIELDS) g.fillText(t(f.key), px((f.x0 + f.x1) / 2), pz((f.z0 + f.z1) / 2));
+  for (const f of FIELDS) g.fillText(mapName(f.key), px((f.x0 + f.x1) / 2), pz((f.z0 + f.z1) / 2));
+  // building names beside the buildings
+  g.font = '700 12px Fredoka, sans-serif'; g.lineWidth = 3; g.strokeStyle = '#14285a'; g.fillStyle = '#ffffff';
+  for (const [key, x, z, rot] of [['senior', 108.5, -16, 1], ['junior', 55, 74.5], ['pavilion', 10, 30], ['sportshouse', 17, 73], ['gym', -16, 80], ['club', -86, 52.5]]) {
+    g.save(); g.translate(px(x), pz(z)); if (rot) g.rotate(-Math.PI / 2);
+    const s = t(key === 'club' ? 'club' : 'b_' + key).toUpperCase(); g.strokeText(s, 0, 0); g.fillText(s, 0, 0); g.restore();
+  }
   g.fillStyle = '#d4a52c'; g.beginPath(); g.arc(px(BELL.x), pz(BELL.z), 6, 0, 7); g.fill(); g.font = '16px serif'; g.fillText('🔔', px(BELL.x), pz(BELL.z) - 14);
   // my tasks
   g.font = '18px serif';

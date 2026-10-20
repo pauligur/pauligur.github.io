@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, STATIONS, SPECIAL, BELL, STAFF_DOORS, BUILDINGS, FIELDS, POOL, BOUNDS, GATE, PARKING, COURTYARD, roomAt } from './world.js';
+import { buildWorld, STATIONS, SPECIAL, BELL, STAFF_DOORS, BUILDINGS, FIELDS, POOL, BOUNDS, GATE, PARKING, COURTYARD, PATHS, roomAt } from './world.js';
 import { makeGim, animateGim, setGhost, disposeGim, nameTag, COLORS, ITEMS, PRESETS } from './gim.js';
 import { Sim, Nav, HM_ORDERS, PHRASES } from './sim.js';
 import { HostRoom, ClientRoom } from './online.js';
@@ -799,6 +799,11 @@ function drawMap() {
   const R = (r, c) => { g.fillStyle = c; g.fillRect(px(r.x0), pz(r.z0), (r.x1 - r.x0) * SX, (r.z1 - r.z0) * SZ); };
   g.fillStyle = '#86a35f'; g.fillRect(0, 0, W, H);
   R(BOUNDS, '#64a148');
+  for (const [x0, z0, x1, z1] of PATHS) R({ x0, z0, x1, z1 }, '#cfcac0');
+  for (const f of FIELDS) if (f.track) {
+    g.strokeStyle = '#4c8a3a'; g.lineWidth = 5 * SX; g.beginPath();
+    g.roundRect(px(f.x0 - 4.5), pz(f.z0 - 6.5), (f.x1 - f.x0 + 9) * SX, (f.z1 - f.z0 + 13) * SZ, (f.x1 - f.x0 + 9) / 2 * SX); g.stroke();
+  }
   for (const f of FIELDS) R(f, { rugby: '#74b555', football: '#74b555', hockey: '#3d8a6a', hockeyGrass: '#74b555', synthetic: '#46a85a', tennis: '#c4693c', padel: '#2f6fb8' }[f.kind]);
   R(POOL.deck, '#e9e5dc'); for (const w of POOL.water) R(w, '#29a8dd');
   for (const [x0, z0, x1, z1] of PARKING) R({ x0, z0, x1, z1 }, '#a7a6a0');
@@ -812,7 +817,7 @@ function drawMap() {
   }
   g.font = '600 12px Fredoka, sans-serif'; g.fillStyle = '#14285a';
   for (const b of BUILDINGS) for (const r of b.rooms) {
-    if (r.key === 'corridor' || r.key === 'jcorridor') continue;
+    if (r.key === 'corridor' || r.key === 'jcorridor' || r.key === 'wc') continue;
     const w = (r.x1 - r.x0) * SX;
     const label = t(r.key);
     g.save(); g.translate(px((r.x0 + r.x1) / 2), pz((r.z0 + r.z1) / 2)); if (w < 40) g.rotate(-Math.PI / 2);

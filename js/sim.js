@@ -13,16 +13,16 @@ const LINES_ES = ['No voy a correr en los pasillos.', 'Voy a terminar mis debere
 
 // Solo mode: three mean teachers on patrol
 const SOLO_TEACHERS = [
-  { id: 'cuff', name: 'Mr. Cuff', zone: 'fields', x: -4, z: -40, calm: 20, speed: 5.0, look: { color: '#d9965f', hat: 'none', hair: 'none', outfit: 'suit', acc: 'glasses', brows: true } },
+  { id: 'cuff', name: 'Mr. Cuff', zone: 'fields', x: 12, z: -40, calm: 20, speed: 5.0, look: { color: '#d9965f', hat: 'none', hair: 'none', outfit: 'suit', acc: 'glasses', brows: true } },
   { id: 'jones', name: 'Mr. Jones', zone: 'senior', x: 122, z: -20, calm: 40, speed: 5.3, look: { color: '#f2b48a', hat: 'none', hair: 'bob', hairColor: '#2b2b3a', outfit: 'suitNavy', acc: 'none', brows: true } },
-  { id: 'blount', name: 'Mr. Blount', zone: 'junior', x: 100, z: 56, calm: 60, speed: 5.6, look: { color: '#ffcf9e', hat: 'cap', hair: 'none', outfit: 'suitGrey', acc: 'whistle', brows: true } },
+  { id: 'blount', name: 'Mr. Blount', zone: 'junior', x: 60, z: 63.75, calm: 60, speed: 5.6, look: { color: '#ffcf9e', hat: 'cap', hair: 'none', outfit: 'suitGrey', acc: 'whistle', brows: true } },
 ];
 
 const inside = (p, b, m = 0) => p.x > b.x0 + m && p.x < b.x1 - m && p.z > b.z0 + m && p.z < b.z1 - m;
 const ZONES = {
   fields: p => FIELDS.some(f => inside(p, f, 1)),
   senior: p => inside(p, BUILDINGS.find(b => b.key === 'senior')),
-  junior: p => ['junior', 'junior2'].some(k => inside(p, BUILDINGS.find(b => b.key === k))),
+  junior: p => ['junior', 'junior2', 'junior3'].some(k => inside(p, BUILDINGS.find(b => b.key === k))),
 };
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -40,8 +40,8 @@ export class Nav {
     const add = (x, z) => { if (!col.blocked(x, z, 0.5)) this.nodes.push({ x, z, e: [] }); };
     for (let x = -134; x <= 134; x += 8) for (let z = -80; z <= 80; z += 8) { add(x, z); add(x + 4, z + 4); }
     // gates in fences (pool, tennis, padel)
-    for (const [x, z] of [[40, 14.5], [40, 17.5], [40, 34.5], [40, 37.5], [31.5, 26], [34.5, 26], [-47, 52.5], [-47, 55.5],
-      [-77.5, 66], [-74.5, 66], [-67.5, 66], [-64.5, 66]]) add(x, z);
+    for (const [x, z] of [[20.5, 34.5], [20.5, 37.5], [20.5, 46.5], [20.5, 49.5], [15.3, 39], [17.8, 39], [-52, 58.5], [-52, 61.5],
+      [-75.5, 69], [-72.5, 69], [-67.5, 69], [-64.5, 69]]) add(x, z);
     for (const b of BUILDINGS) {
       for (const d of b.doors || []) {
         const o = 1.5;
@@ -148,7 +148,7 @@ export class Sim {
     }
     if (mode !== 'online' && meRole !== 'headmistress') {
       const hm = add({ id: 'hm', name: lang === 'es' ? 'Directora Pauli' : 'Headmistress Pauli', npc: true, role: 'headmistress', look: { ...PAULI } });
-      Object.assign(hm, { x: 113.8, z: 16, ry: Math.PI / 2 });
+      Object.assign(hm, { x: 113.6, z: -8.5, ry: Math.PI / 2 });
     }
     this.taskTotal = [...this.players.values()].filter(p => p.role === 'student').reduce((s, p) => s + p.tasks.length, 0);
     this.taskDone = 0;

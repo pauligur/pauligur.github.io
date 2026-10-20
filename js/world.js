@@ -1,215 +1,248 @@
-// The TBS campus, laid out from the official 2025 campus map + floor plans
-// (squashed so it's quick to run across). 1 unit ≈ 1.6 m.
+// The TBS campus, measured off the official 2025 campus map (un-skewed to a top-down view)
+// plus the floor plans. 1 unit ≈ 1.6 m.
 // x = Beranger (west) → Havre (east), z = Arias (north) → Máximo Tajes (south, the main road).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const BOUNDS = { x0: -140, z0: -85, x1: 140, z1: 85 };
-export const BELL = { x: 88, z: -2 };
+export const BELL = { x: 98, z: 12 };
 
 export const FIELDS = [
-  { key: 'r2', kind: 'rugby', x0: -132, z0: -78, x1: -84, z1: -18 },
-  { key: 'f1', kind: 'football', x0: -132, z0: -10, x1: -84, z1: 46 },
-  { key: 'r1', kind: 'rugby', x0: -62, z0: -70, x1: -18, z1: -24, track: true },
-  { key: 'multi', kind: 'synthetic', x0: -66, z0: -4, x1: -8, z1: 42 },
-  { key: 'h1', kind: 'hockey', x0: 16, z0: -78, x1: 78, z1: -42 },
-  { key: 'f2', kind: 'football', x0: 16, z0: -34, x1: 78, z1: 2 },
-  { key: 'tennis', kind: 'tennis', x0: -62, z0: 54, x1: -32, z1: 78 },
-  { key: 'padel', kind: 'padel', x0: -76, z0: 56, x1: -66, z1: 76 },
+  { key: 'r2', kind: 'rugby', x0: -121, z0: -72, x1: -78, z1: -24 },
+  { key: 'f1', kind: 'football', x0: -124, z0: -4, x1: -80, z1: 52 },
+  { key: 'r1', kind: 'rugby', x0: -54, z0: -66, x1: -10, z1: 0, track: true },
+  { key: 'multi', kind: 'hockeyGrass', x0: -65, z0: 17, x1: -4, z1: 55 },
+  { key: 'h1', kind: 'hockey', x0: 30, z0: -76, x1: 94, z1: -26 },
+  { key: 'f2', kind: 'football', x0: 22, z0: -24, x1: 90, z1: 25 },
+  { key: 'tennis', kind: 'tennis', x0: -62, z0: 60, x1: -42, z1: 78 },
+  { key: 'padel', kind: 'padel', x0: -74, z0: 62, x1: -66, z1: 76 },
 ];
 
-// small pool right next to the Pavilion
+// the small pool beside the Pavilion
 export const POOL = {
-  deck: { x0: 33, z0: 16, x1: 49, z1: 36 },
-  water: [{ x0: 36, z0: 20, x1: 45, z1: 32 }],
+  deck: { x0: 16.5, z0: 36, x1: 24.5, z1: 48 },
+  water: [{ x0: 19, z0: 38, x1: 23, z1: 46 }],
 };
 
+// Corridor block: a straight corridor with a row of rooms on each side, each room with a door onto it.
+// axis 'z': the corridor runs north–south between x = c0..c1 (side A west, side B east); 'x': runs east–west
+// between z = c0..c1 (side A north, side B south). Rooms are [key, from, to, {open: n doors}].
+function corridorBlock(b, { axis, c0, c1, corridor, a = [], b: bSide = [], from, to }) {
+  const X = axis === 'z';
+  const s0 = from ?? (X ? b.z0 : b.x0), s1 = to ?? (X ? b.z1 : b.x1);
+  const lo = X ? b.x0 : b.z0, hi = X ? b.x1 : b.z1;
+  const rect = (p0, p1, q0, q1) => X ? { x0: q0, z0: p0, x1: q1, z1: p1 } : { x0: p0, z0: q0, x1: p1, z1: q1 };
+  const wallAt = (q, p0, p1, doors) => X ? [q, p0, q, p1, doors] : [p0, q, p1, q, doors];
+  const cross = (p, q0, q1, doors) => X ? [q0, p, q1, p, doors] : [p, q0, p, q1, doors];
+  b.rooms = [...(b.rooms || []), { key: corridor, ...rect(s0, s1, c0, c1), floor: '#c9b48f' }];
+  b.inner = b.inner || [];
+  for (const [side, q0, q1, cw] of [[a, lo, c0, c0], [bSide, c1, hi, c1]]) {
+    const doors = [];
+    side.forEach(([key, p0, p1, o = {}], i) => {
+      b.rooms.push({ key, ...rect(p0, p1, q0, q1), ...o });
+      const n = o.open || 1;
+      for (let k = 0; k < n; k++) doors.push(p0 + (p1 - p0) * (k + 0.5) / n);
+      if (i > 0) b.inner.push(cross(p0, q0, q1));
+    });
+    b.inner.push(wallAt(cw, s0, s1, doors));
+  }
+  return b;
+}
+
 // Buildings: exterior rect, doors {side, at}, interior walls [xa,za,xb,zb,[doorAts]], rooms.
+// Ground floors follow the 2025 floor plans (S1, J1, EYC1, P1, SH1, G1).
 export const BUILDINGS = [
-  {
+  corridorBlock({  // Senior School, ground floor (plan S1): classrooms along the Havre side, staff room, labs & library on the field side
     key: 'senior', x0: 112, z0: -55, x1: 132, z1: 22, h: 6.8, levels: 2,
-    doors: [{ side: 'n', at: 122 }, { side: 's', at: 122 }, { side: 'w', at: -17 }],
-    inner: [
-      [120, -55, 120, 22, [-42, -12, 9]],
-      [124, -55, 124, 22, [-40, -12, 11]],
-      [112, -30, 120, -30], [112, -5, 120, -5],
-      [124, -25, 132, -25], [124, 0, 132, 0],
-    ],
-    rooms: [
-      { key: 'library', x0: 112, z0: -55, x1: 120, z1: -30, floor: '#b98b5e' },
-      { key: 'lab', x0: 112, z0: -30, x1: 120, z1: -5, floor: '#d9dde0' },
-      { key: 'office', x0: 112, z0: -5, x1: 120, z1: 22, floor: '#7b2d3a' },
-      { key: 'corridor', x0: 120, z0: -55, x1: 124, z1: 22, floor: '#c9b48f' },
-      { key: 'computer', x0: 124, z0: -55, x1: 132, z1: -25, floor: '#c4d3e0' },
-      { key: 'class1', x0: 124, z0: -25, x1: 132, z1: 0, floor: '#cdbb98' },
-      { key: 'staff', x0: 124, z0: 0, x1: 132, z1: 22, floor: '#a8b5a0' },
-    ],
-    sign: { side: 'w', at: -17 },
-  },
+    doors: [{ side: 'n', at: 122.5 }, { side: 's', at: 122.5 }, { side: 'w', at: -14 }, { side: 'w', at: -23 }, { side: 'e', at: -9.5 }],
+    sign: { side: 'w', at: -14 },
+  }, {
+    axis: 'z', c0: 121, c1: 124, corridor: 'corridor',
+    a: [['library', -55, -43], ['wc', -43, -40], ['computer', -40, -35], ['lab', -35, -29.5], ['atrium', -29.5, -17, { open: 2, floor: '#9cc27a' }],
+      ['sfoyer', -17, -11], ['office', -11, -6, { floor: '#7b2d3a' }], ['wc', -6, -3], ['S1 09', -3, 0], ['staff', 0, 6.3],
+      ['S1 05', 6.3, 10.6], ['S1 03', 10.6, 15], ['S1 01', 15, 22]],
+    b: [['S1 25', -55, -49.8], ['S1 24', -49.8, -44.5], ['S1 23', -44.5, -39.3], ['S1 22', -39.3, -34], ['S1 21', -34, -28.8],
+      ['S1 20', -28.8, -23.5], ['S1 19', -23.5, -18.3], ['class1', -18.3, -13], ['sentrance', -13, -6, { open: 2 }],
+      ['S1 11', -6, 1.5], ['S1 10', 1.5, 5.5], ['S1 08', 5.5, 9.5], ['S1 06', 9.5, 13.5], ['S1 04', 13.5, 17.5], ['S1 02', 17.5, 22]],
+  }),
   {
     key: 'auditorium', x0: 112, z0: -72, x1: 132, z1: -58, h: 5.5, wall: '#f4f1ea',
     doors: [{ side: 's', at: 122 }, { side: 'w', at: -65 }],
     rooms: [{ key: 'auditorium', x0: 112, z0: -72, x1: 132, z1: -58, floor: '#8a5a3c' }],
     sign: { side: 'w', at: -65 },
   },
-  {  // EYC: the curved glass building at the west end of the Junior School, 3 levels
-    key: 'early', x0: 52, z0: 12, x1: 70, z1: 42, h: 9.6, levels: 3, wall: '#fbeee0', curved: 'w',
-    doors: [{ side: 'n', at: 61 }, { side: 'e', at: 30 }, { side: 's', at: 61 }],
-    rooms: [{ key: 'early', x0: 52, z0: 12, x1: 70, z1: 42, floor: '#f6c9a9' }],
-    sign: { side: 'n', at: 61 },
-  },
-  {  // Junior School main wing, along Máximo Tajes
-    key: 'junior', x0: 70, z0: 44, x1: 126, z1: 68, h: 6.8, levels: 2,
-    doors: [{ side: 'w', at: 56 }, { side: 'e', at: 56 }, { side: 'n', at: 77 }, { side: 'n', at: 105 }, { side: 'n', at: 122 }, { side: 's', at: 83 }],
+  {  // EYC (plan EYC1, Kinder floor): classrooms at both ends of a central hall behind the curved glass, 3 levels
+    key: 'early', x0: 27, z0: 31, x1: 41, z1: 55, h: 9.6, levels: 3, wall: '#fbeee0', curved: 'w',
+    doors: [{ side: 'n', at: 30 }, { side: 'e', at: 40.5 }, { side: 'e', at: 46 }, { side: 's', at: 30 }],
     inner: [
-      [70, 54, 126, 54, [77, 91, 105, 119]],
-      [70, 58, 126, 58, [83, 104, 119]],
-      [84, 44, 84, 54], [98, 44, 98, 54], [112, 44, 112, 54],
-      [96, 58, 96, 68], [112, 58, 112, 68],
+      [27, 38, 41, 38, [30, 35.5, 39.5]], [33, 31, 33, 38], [38, 31, 38, 38], [38, 34.5, 41, 34.5, [39.5]],
+      [27, 48, 41, 48, [30, 35.75, 39.75]], [33, 48, 33, 55], [38.5, 48, 38.5, 55],
     ],
     rooms: [
-      { key: 'classJ1', x0: 70, z0: 44, x1: 84, z1: 54, floor: '#cfe0c3' },
-      { key: 'classJ2', x0: 84, z0: 44, x1: 98, z1: 54, floor: '#e3d4a8' },
-      { key: 'class2', x0: 98, z0: 44, x1: 112, z1: 54, floor: '#cfe0c3' },
-      { key: 'class3', x0: 112, z0: 44, x1: 126, z1: 54, floor: '#e3d4a8' },
-      { key: 'jcorridor', x0: 70, z0: 54, x1: 126, z1: 58, floor: '#c9b48f' },
-      { key: 'dining', x0: 70, z0: 58, x1: 96, z1: 68, floor: '#e0d5c0' },
-      { key: 'art', x0: 96, z0: 58, x1: 112, z1: 68, floor: '#e8d9c4' },
-      { key: 'music', x0: 112, z0: 58, x1: 126, z1: 68, floor: '#b9a2c9' },
+      { key: 'EYC1 04', x0: 27, z0: 31, x1: 33, z1: 38, floor: '#f6c9a9' }, { key: 'EYC1 03', x0: 33, z0: 31, x1: 38, z1: 38, floor: '#f7d9a0' },
+      { key: 'wc', x0: 38, z0: 31, x1: 41, z1: 34.5, floor: '#dfe6e9' }, { key: 'EYC1 01', x0: 38, z0: 34.5, x1: 41, z1: 38, floor: '#e8d9c4' },
+      { key: 'early', x0: 27, z0: 38, x1: 41, z1: 48, floor: '#f6c9a9' },
+      { key: 'EYC1 05', x0: 27, z0: 48, x1: 33, z1: 55, floor: '#cfe6f2' }, { key: 'EYC1 06', x0: 33, z0: 48, x1: 38.5, z1: 55, floor: '#f7d9a0' },
+      { key: 'EYC1 07', x0: 38.5, z0: 48, x1: 41, z1: 55, floor: '#e8d9c4' },
     ],
-    sign: { side: 'n', at: 91 },
+    sign: { side: 'n', at: 35.5 },
   },
-  {  // Junior School north wing (hall + staff room) round the palm courtyard
-    key: 'junior2', x0: 92, z0: 12, x1: 108, z1: 40, h: 6.8, levels: 2,
-    doors: [{ side: 'w', at: 21 }, { side: 'n', at: 100 }, { side: 's', at: 100 }],
-    inner: [[92, 28, 108, 28, [100]]],
+  corridorBlock({  // Junior School north wing (plan J1, rooms J1 20–32) — joins the EYC and the east block
+    key: 'junior2', x0: 41, z0: 30, x1: 65.7, z1: 43, h: 6.8, levels: 2,
+    doors: [{ side: 'w', at: 40.5 }, { side: 'n', at: 44.4 }, { side: 'n', at: 60.6 }, { side: 'e', at: 37 }, { side: 's', at: 49.7 }],
+    sign: { side: 'n', at: 52 },
+  }, {
+    axis: 'x', c0: 36, c1: 38, corridor: 'jcorridor',
+    a: [['hall', 41, 47.9, { floor: '#c49a6c' }], ['music', 47.9, 51.5, { floor: '#b9a2c9' }], ['J1 25', 51.5, 55.3], ['J1 27', 55.3, 58.7], ['J1 29', 58.7, 62.5], ['wc', 62.5, 65.7]],
+    b: [['J1 20', 41, 45.8], ['dining', 45.8, 53.6, { floor: '#e0d5c0' }], ['J1 26', 53.6, 56.9], ['J1 28', 56.9, 60.8], ['J1 30', 60.8, 63.4], ['firstaid', 63.4, 65.7]],
+  }),
+  corridorBlock({  // Junior School east block (plan J1, offices J1 11–19): reception, offices — the glass walkway leaves from here
+    key: 'junior3', x0: 66, z0: 30, x1: 104, z1: 48, h: 6.8, levels: 2,
+    doors: [{ side: 'w', at: 37 }, { side: 'w', at: 45 }, { side: 'e', at: 37 }, { side: 'n', at: 71 }, { side: 's', at: 69 }],
+    sign: { side: 'n', at: 85 },
+  }, {
+    axis: 'x', c0: 36, c1: 38, corridor: 'jcorridor',
+    a: [['jreception', 66, 76], ['J1 12', 76, 82], ['J1 13', 82, 90], ['J1 14', 90, 96], ['J1 19', 96, 104]],
+    b: [['jwaiting', 66, 72], ['art', 72, 82, { floor: '#e8d9c4' }], ['J1 15', 82, 88], ['J1 16', 88, 94], ['J1 17', 94, 99], ['J1 18', 99, 104]],
+  }),
+  corridorBlock({  // Junior School main wing (plan J1, J1 01–10): staff room at the west end, classrooms both sides
+    key: 'junior', x0: 34, z0: 56, x1: 76, z1: 71, h: 6.8, levels: 2,
+    doors: [{ side: 'w', at: 63.75 }, { side: 'e', at: 63.75 }, { side: 'n', at: 45 }, { side: 's', at: 73 }],
+    inner: [[41.7, 56, 41.7, 71, [63.75]]],
+    rooms: [{ key: 'jstaff', x0: 34, z0: 56, x1: 41.7, z1: 71, floor: '#a8b5a0' }],
+    sign: { side: 'n', at: 56 },
+  }, {
+    axis: 'x', c0: 62.5, c1: 65, corridor: 'jcorridor', from: 41.7,
+    a: [['J1 03', 41.7, 48.6], ['J1 05', 48.6, 53.6], ['J1 07', 53.6, 59], ['wc', 59, 67.5], ['jstore', 67.5, 76]],
+    b: [['classJ1', 41.7, 48.6], ['classJ2', 48.6, 53.6], ['class2', 53.6, 59], ['class3', 59, 64], ['J1 09', 64, 66.6], ['J1 10', 66.6, 70.2], ['jentrance', 70.2, 76]],
+  }),
+  {  // Pavilion (plan P1): changing rooms & toilets, the hall, and the tea room annex
+    key: 'pavilion', x0: 6, z0: 31, x1: 14, z1: 48, h: 3.4, wall: '#e9e4da',
+    doors: [{ side: 'n', at: 10 }, { side: 'e', at: 39 }, { side: 'w', at: 45 }],
+    inner: [[6, 35.5, 14, 35.5, [10]], [6, 42, 14, 42, [10]]],
     rooms: [
-      { key: 'hall', x0: 92, z0: 12, x1: 108, z1: 28, floor: '#c49a6c' },
-      { key: 'jstaff', x0: 92, z0: 28, x1: 108, z1: 40, floor: '#a8b5a0' },
+      { key: 'changing', x0: 6, z0: 31, x1: 14, z1: 35.5, floor: '#cfd8dc' },
+      { key: 'pavilion', x0: 6, z0: 35.5, x1: 14, z1: 42, floor: '#b48a62' },
+      { key: 'tearoom', x0: 6, z0: 42, x1: 14, z1: 48, floor: '#c49a6c' },
     ],
-    sign: { side: 'n', at: 100 },
+    sign: { side: 'n', at: 10 },
+  },
+  {  // Sports House (plan SH1): open fitness hall + studio, changing rooms and office at the back
+    key: 'sportshouse', x0: 6, z0: 57, x1: 28, z1: 70, h: 6.8, levels: 2, wall: '#efe6d6',
+    doors: [{ side: 'n', at: 12 }, { side: 'e', at: 61 }, { side: 's', at: 23 }],
+    inner: [[20, 57, 20, 64.5, [61]], [6, 64.5, 28, 64.5, [10, 16, 23]], [14, 64.5, 14, 70], [18, 64.5, 18, 70]],
+    rooms: [
+      { key: 'fitness', x0: 6, z0: 57, x1: 20, z1: 64.5, floor: '#9aa7b0' }, { key: 'studio', x0: 20, z0: 57, x1: 28, z1: 64.5, floor: '#c49a6c' },
+      { key: 'changing', x0: 6, z0: 64.5, x1: 14, z1: 70, floor: '#cfd8dc' }, { key: 'wc', x0: 14, z0: 64.5, x1: 18, z1: 70, floor: '#dfe6e9' },
+      { key: 'sportsoffice', x0: 18, z0: 64.5, x1: 28, z1: 70, floor: '#c4d3e0' },
+    ],
+    sign: { side: 'n', at: 12 },
+  },
+  {  // Gymnasium (plan G1): foyer on the west, the big hall (three courts, halls A & B), changing rooms on the east
+    key: 'gym', x0: -30, z0: 58, x1: -2, z1: 77, h: 7, wall: '#f1efe9',
+    doors: [{ side: 'n', at: -28.2 }, { side: 'w', at: 67.5 }, { side: 'n', at: -21 }, { side: 'n', at: -10 }, { side: 'e', at: 62.5 }],
+    inner: [[-26.3, 58, -26.3, 77, [62, 72]], [-15.9, 58, -15.9, 77, [61, 67.5, 74]], [-5.5, 58, -5.5, 77, [62.5, 72]], [-5.5, 67.5, -2, 67.5]],
+    rooms: [
+      { key: 'gymlobby', x0: -30, z0: 58, x1: -26.3, z1: 77, floor: '#c9b48f' },
+      { key: 'gymA', x0: -26.3, z0: 58, x1: -15.9, z1: 77, floor: '#d7a35f' },
+      { key: 'gymB', x0: -15.9, z0: 58, x1: -5.5, z1: 77, floor: '#cf9a55' },
+      { key: 'changing', x0: -5.5, z0: 58, x1: -2, z1: 67.5, floor: '#cfd8dc' }, { key: 'wc', x0: -5.5, z0: 67.5, x1: -2, z1: 77, floor: '#dfe6e9' },
+    ],
+    sign: { side: 'n', at: -16 },
   },
   {
-    key: 'pavilion', x0: 10, z0: 18, x1: 30, z1: 34, h: 3.4, wall: '#e9e4da',
-    doors: [{ side: 'n', at: 16 }, { side: 's', at: 26 }],
-    inner: [[22, 18, 22, 34, [26]]],
+    key: 'club', x0: -95, z0: 55, x1: -77, z1: 67, h: 3.4, wall: '#efe6d6',
+    doors: [{ side: 'n', at: -88 }, { side: 'e', at: 63.5 }],
+    inner: [[-81, 55, -81, 67, [57.5, 63.5]], [-81, 60, -77, 60]],
     rooms: [
-      { key: 'pavilion', x0: 10, z0: 18, x1: 22, z1: 34, floor: '#b48a62' },
-      { key: 'changing', x0: 22, z0: 18, x1: 30, z1: 34, floor: '#cfd8dc' },
+      { key: 'club', x0: -95, z0: 55, x1: -81, z1: 67, floor: '#b48a62' },
+      { key: 'wc', x0: -81, z0: 55, x1: -77, z1: 60, floor: '#dfe6e9' }, { key: 'clubkitchen', x0: -81, z0: 60, x1: -77, z1: 67, floor: '#e0d5c0' },
     ],
-    sign: { side: 'n', at: 16 },
-  },
-  {
-    key: 'sportshouse', x0: 16, z0: 50, x1: 42, z1: 74, h: 6.8, levels: 2, wall: '#efe6d6',
-    doors: [{ side: 'n', at: 24 }, { side: 'e', at: 62 }],
-    inner: [[32, 50, 32, 74, [62]]],
-    rooms: [
-      { key: 'fitness', x0: 16, z0: 50, x1: 32, z1: 74, floor: '#9aa7b0' },
-      { key: 'sportsoffice', x0: 32, z0: 50, x1: 42, z1: 74, floor: '#c4d3e0' },
-    ],
-    sign: { side: 'n', at: 24 },
-  },
-  {
-    key: 'gym', x0: -24, z0: 50, x1: 10, z1: 78, h: 7, wall: '#f1efe9',
-    doors: [{ side: 'n', at: -16 }, { side: 'n', at: 5 }, { side: 'e', at: 64 }],
-    inner: [[-7, 50, -7, 78, [64]]],
-    rooms: [
-      { key: 'gymA', x0: -24, z0: 50, x1: -7, z1: 78, floor: '#d7a35f' },
-      { key: 'gymB', x0: -7, z0: 50, x1: 10, z1: 78, floor: '#cf9a55' },
-    ],
-    sign: { side: 'n', at: -7 },
-  },
-  {
-    key: 'club', x0: -112, z0: 52, x1: -86, z1: 70, h: 3.4, wall: '#efe6d6',
-    doors: [{ side: 'n', at: -99 }, { side: 'e', at: 61 }],
-    rooms: [{ key: 'club', x0: -112, z0: 52, x1: -86, z1: 70, floor: '#b48a62' }],
-    sign: { side: 'n', at: -99 },
+    sign: { side: 'n', at: -88 },
   },
   {  // the building on the Beranger / Máximo Tajes corner
-    key: 'store', x0: -132, z0: 56, x1: -118, z1: 76, h: 3.4, wall: '#e9e4da',
-    doors: [{ side: 'e', at: 66 }, { side: 'n', at: -125 }],
-    rooms: [{ key: 'store', x0: -132, z0: 56, x1: -118, z1: 76, floor: '#9e9a92' }],
+    key: 'store', x0: -128, z0: 56, x1: -116, z1: 77, h: 3.4, wall: '#e9e4da',
+    doors: [{ side: 'e', at: 66 }, { side: 'n', at: -122 }],
+    rooms: [{ key: 'store', x0: -128, z0: 56, x1: -116, z1: 77, floor: '#9e9a92' }],
     sign: { side: 'e', at: 66 },
   },
 ];
 
 export const ROOMS = BUILDINGS.flatMap(b => b.rooms);
+export const COURTYARD = { x0: 41, z0: 43, x1: 66, z1: 56 };
 const bRect = k => { const b = BUILDINGS.find(o => o.key === k); return { x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1 }; };
 // Outdoor "areas" for orders / the map
 export const AREAS = [
   ...FIELDS.map(f => ({ key: f.key, x0: f.x0, z0: f.z0, x1: f.x1, z1: f.z1 })),
   { key: 'pool', ...POOL.deck },
   { key: 'gym', ...bRect('gym') },
-  { key: 'courtyard', x0: 70, z0: 12, x1: 92, z1: 44 },
+  { key: 'courtyard', ...COURTYARD },
   ...ROOMS,
 ];
 
+const inR = (x, z, r) => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
 export function roomAt(x, z) {
-  for (const r of ROOMS) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.key;
-  if (x >= POOL.deck.x0 && x <= POOL.deck.x1 && z >= POOL.deck.z0 && z <= POOL.deck.z1) return 'pool';
-  for (const f of FIELDS) if (x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1) return f.key;
-  if (x >= 70 && x <= 92 && z >= 12 && z <= 44) return 'courtyard';
+  for (const r of ROOMS) if (inR(x, z, r)) return r.key;
+  if (inR(x, z, POOL.deck)) return 'pool';
+  for (const f of FIELDS) if (inR(x, z, f)) return f.key;
+  if (inR(x, z, COURTYARD)) return 'courtyard';
   return 'outside';
 }
 
-// Sandy paths (also kept clear of trees) and car parks
+// Paved paths (also kept clear of trees) and car parks, as on the campus map
 export const PATHS = [
   [-138, 78, 138, 82], [-138, -82, 138, -78], [-138, -82, -134, 82], [134, -82, 138, 82],   // round the edge
-  [-134, -14, 2, -10],       // between the rugby pitches and the football / multipurpose
-  [-80, -78, -76, 50],       // Beranger side
-  [2, -82, 8, 50],           // from the Arias gate down to the Gymnasium
-  [2, 6, 112, 10],           // past Football 2 to the Senior School
-  [-80, 46, 2, 50],          // in front of the Club and the courts
-  [100, -78, 110, 10],       // in front of the Senior School
-  [44, 36, 50, 85],          // Casales gate
-  [8, 36, 44, 40], [8, 10, 12, 18], [30, 10, 34, 50],
-  [110, -60, 134, -56],
+  [0, -82, 4, 58],           // the long path from the Arias gate to the Gymnasium
+  [4, 26, 110, 29],          // under Football 2, to the Junior and Senior Schools
+  [104, -78, 110, 29],       // beside the Senior School
+  [-76, 56, 0, 59],          // in front of the courts and the Club
+  [4, 50, 40, 53], [20, 70, 26, 85],   // past the Pavilion; Casales gate
+  [76, 48, 80, 56], [110, -60, 134, -56],
 ];
-export const PARKING = [[72, 71, 126, 77], [-112, 72, -84, 78]];
-export const COURTYARD = { x0: 70, z0: 12, x1: 92, z1: 44 };
+export const PARKING = [[78, 64, 100, 76], [-114, 69, -77, 77], [-30, -84, -14, -77]];
 
 // Maintenance task stations
 export const STATIONS = [
-  { id: 'recycle', game: 'sort', set: 'recycle', x: 78, z: 41, icon: '♻️' },
-  { id: 'books', game: 'sort', set: 'books', x: 113.4, z: -47, icon: '📚' },
-  { id: 'lab', game: 'simon', set: 'lab', x: 113.5, z: -8, icon: '🧪' },
-  { id: 'projector', game: 'wires', set: 'projector', x: 131, z: -6, icon: '📽️' },
+  { id: 'recycle', game: 'sort', set: 'recycle', x: 52, z: 54.3, icon: '♻️' },
+  { id: 'books', game: 'sort', set: 'books', x: 113.2, z: -49, icon: '📚' },
+  { id: 'lab', game: 'simon', set: 'lab', x: 113.2, z: -32.2, icon: '🧪' },
+  { id: 'projector', game: 'wires', set: 'projector', x: 131.2, z: -15.6, icon: '📽️' },
   { id: 'stage', game: 'wires', set: 'stage', x: 122, z: -67.6, icon: '💡' },
-  { id: 'skim', game: 'collect', set: 'leaves', x: 46.5, z: 33, icon: '🍂' },
-  { id: 'chlorine', game: 'gauge', set: 'chlorine', x: 35, z: 18, icon: '🧴' },
-  { id: 'pump', game: 'hold', set: 'pump', x: -21.5, z: 53, icon: '🏀' },
-  { id: 'mats', game: 'sequence', set: 'mats', x: 7, z: 75.5, icon: '🤸' },
-  { id: 'hockey', game: 'collect', set: 'hockey', x: 47, z: -60, icon: '🏑' },
-  { id: 'rugby', game: 'sequence', set: 'rugby', x: -108, z: -75.5, icon: '🏉' },
-  { id: 'tennis', game: 'sweep', set: 'clay', x: -47, z: 60, icon: '🎾' },
-  { id: 'tables', game: 'sweep', set: 'table', x: 88, z: 63, icon: '🧽' },
-  { id: 'fruit', game: 'sort', set: 'fruit', x: 94.2, z: 66, icon: '🍎' },
-  { id: 'plants', game: 'hold', set: 'water', x: 103, z: 45.6, icon: '🪴' },
-  { id: 'art', game: 'sort', set: 'art', x: 98.5, z: 66.5, icon: '🎨' },
-  { id: 'computers', game: 'sequence', set: 'computers', x: 130.4, z: -40, icon: '💻' },
-  { id: 'toys', game: 'collect', set: 'toys', x: 55, z: 15, icon: '🧸' },
-  { id: 'wifi', game: 'wires', set: 'wifi', x: -130.4, z: 72, icon: '📶' },
-  { id: 'mow', game: 'sweep', set: 'grass', x: -4, z: -40, icon: '🌱' },
-  { id: 'piano', game: 'simon', set: 'piano', x: 118, z: 64.4, icon: '🎹' },
+  { id: 'skim', game: 'collect', set: 'leaves', x: 23.6, z: 37, icon: '🍂' },
+  { id: 'chlorine', game: 'gauge', set: 'chlorine', x: 8.6, z: 33.6, icon: '🧴' },
+  { id: 'pump', game: 'hold', set: 'pump', x: -25, z: 60, icon: '🏀' },
+  { id: 'mats', game: 'sequence', set: 'mats', x: -7, z: 75.6, icon: '🤸' },
+  { id: 'hockey', game: 'collect', set: 'hockey', x: 62, z: -50, icon: '🏑' },
+  { id: 'rugby', game: 'sequence', set: 'rugby', x: -99.5, z: -69.5, icon: '🏉' },
+  { id: 'tennis', game: 'sweep', set: 'clay', x: -56, z: 64, icon: '🎾' },
+  { id: 'tables', game: 'sweep', set: 'table', x: 47.3, z: 41.6, icon: '🧽' },
+  { id: 'fruit', game: 'sort', set: 'fruit', x: 52.6, z: 41.9, icon: '🍎' },
+  { id: 'plants', game: 'hold', set: 'water', x: 56.3, z: 70.4, icon: '🪴' },
+  { id: 'art', game: 'sort', set: 'art', x: 73, z: 47.3, icon: '🎨' },
+  { id: 'computers', game: 'sequence', set: 'computers', x: 113.2, z: -37.5, icon: '💻' },
+  { id: 'toys', game: 'collect', set: 'toys', x: 28.4, z: 32.4, icon: '🧸' },
+  { id: 'wifi', game: 'wires', set: 'wifi', x: -126.6, z: 74, icon: '📶' },
+  { id: 'mow', game: 'sweep', set: 'grass', x: 12, z: -10, icon: '🌱' },
+  { id: 'piano', game: 'simon', set: 'piano', x: 49.7, z: 30.8, icon: '🎹' },
 ];
 
 export const SPECIAL = {
-  fuse: { x: 29.3, z: 31 },
-  fireA: { x: 9.1, z: 72 },
-  fireB: { x: 121, z: -20 },
-  office: { x: 117, z: 4 },
+  fuse: { x: 13.3, z: 33.4 },
+  fireA: { x: -2.9, z: 64 },
+  fireB: { x: 121.9, z: -46 },
+  office: { x: 116.5, z: -8.5 },
 };
 
 export const STAFF_DOORS = [
-  { x: 125, z: 20.8, room: 'staff' },
+  { x: 112.8, z: 5.6, room: 'staff' },
   { x: 131, z: -67.2, room: 'auditorium' },
-  { x: -22.5, z: 76.5, room: 'gymA' },
-  { x: -119.2, z: 74.5, room: 'store' },
-  { x: -110.6, z: 53.6, room: 'club' },
-  { x: 110.6, z: 66.6, room: 'art' },
+  { x: -25.4, z: 76.2, room: 'gymA' },
+  { x: -117.2, z: 75.5, room: 'store' },
+  { x: -94.2, z: 56, room: 'club' },
+  { x: 81.2, z: 47.2, room: 'art' },
 ];
 
-export const GATE = { x0: 43, x1: 51 };
+export const GATE = { x0: 19, x1: 27 };
 
 /* ------------------------------------------------------------------ */
 /* Geometry batching: thousands of static boxes → a handful of meshes. */
@@ -356,7 +389,7 @@ function groundTexture() {
     g.fillRect(px(x), pz(z), s * S, s * S);
   }
   // sandy paths (Carrasco soil)
-  const sand = '#d8c694';
+  const sand = '#cfcac0';
   for (const p of PATHS) R(...p, sand);
   // parking (by the Junior School and by the OBC/OGC Club)
   const parking = (x0, z0, x1, z1) => {
@@ -368,10 +401,10 @@ function groundTexture() {
   // Junior palm courtyard paving + the glass walkway to the Senior School
   R(COURTYARD.x0, COURTYARD.z0, COURTYARD.x1, COURTYARD.z1, '#cdbf9d');
   for (let x = COURTYARD.x0 + 2; x < COURTYARD.x1; x += 4) L(x, COURTYARD.z0, x, COURTYARD.z1, 'rgba(120,100,70,0.25)', 0.12);
-  R(119, 22, 125, 44, '#cdbf9d');
+  R(120, 22, 125, 39, '#cdbf9d'); R(104, 35, 125, 39, '#cdbf9d');
   // running track round Rugby 1
   for (const f of FIELDS) if (f.track) {
-    const x0 = f.x0 - 6, z0 = f.z0 - 7, x1 = f.x1 + 6, z1 = f.z1 + 7, r = (x1 - x0) / 2;
+    const x0 = f.x0 - 7, z0 = f.z0 - 9, x1 = f.x1 + 7, z1 = f.z1 + 9, r = (x1 - x0) / 2;
     g.strokeStyle = '#4c8a3a'; g.lineWidth = 5 * S;
     g.beginPath(); g.roundRect(px(x0 + 2.5), pz(z0 + 2.5), (x1 - x0 - 5) * S, (z1 - z0 - 5) * S, (r - 2.5) * S); g.stroke();
     g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 0.2 * S;
@@ -648,45 +681,131 @@ export function buildWorld(scene) {
   const rnd = mulberry(42);
 
   const R90 = Math.PI / 2;
-  // ---------- Senior School (the long building on the east)
-  // Library
-  for (let i = 0; i < 4; i++) shelf(112.5, -52 + i * 3.4, 2.8, false, rnd);
-  shelf(116, -54.6, 6, true, rnd);
-  table(116.5, -38, 2.6, 1.3, '#c49a6c'); table(116.5, -34, 2.6, 1.3, '#c49a6c');
-  sign('LIBRARY', 120.2, 3.0, -42, R90, 2.6, 0.5);
-  // Science lab
-  box(116, 0, -23, 1.2, 0.9, 6, '#2b2f36', true); box(116, 0.9, -23, 1.25, 0.06, 6, '#e8ecef');
-  box(116, 0, -10.5, 1.2, 0.9, 4, '#2b2f36', true); box(116, 0.9, -10.5, 1.25, 0.06, 4, '#e8ecef');
-  box(112.6, 0, -25, 1.0, 1.0, 6, '#dfe6e9', true);          // sink counter
-  sign('SCIENCE LAB', 120.2, 3.0, -12, R90, 3.2, 0.5);
-  // Headmistress's office
-  box(116, 0.02, 12, 6, 0.04, 6, '#b1372f');                  // rug
-  table(115, 13, 1.4, 3.4, '#5b3418', 0.82);                  // big desk
-  box(113.5, 0, 13, 0.8, 1.5, 0.9, '#7b2d3a');                // leather chair
-  shelf(116, 21.6, 6, true, rnd);
-  shelf(112.5, 3, 5, false, rnd);
-  sign('HEADMISTRESS', 120.2, 3.0, 9, R90, 3.2, 0.5);
-  {  // green banner with the TBS crest behind her desk
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.4), new THREE.MeshLambertMaterial({ color: '#155c2e' }));
-    banner.position.set(112.34, 1.9, 13); banner.rotation.y = R90; scene.add(banner);
-    const ct = new THREE.TextureLoader().load('assets/badge.svg'); ct.colorSpace = THREE.SRGBColorSpace;
-    const crest = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.32), new THREE.MeshBasicMaterial({ map: ct, transparent: true }));
-    crest.position.set(112.37, 2.05, 13); crest.rotation.y = R90; scene.add(crest);
+  // ---------- Room furniture, from each room's type (keeps doorways and task spots clear)
+  const doorPts = [];
+  for (const b of BUILDINGS) {
+    for (const o of b.doors || []) doorPts.push(o.side === 'n' ? [o.at, b.z0] : o.side === 's' ? [o.at, b.z1] : o.side === 'w' ? [b.x0, o.at] : [b.x1, o.at]);
+    for (const w of b.inner || []) for (const at of w[4] || []) doorPts.push(w[1] === w[3] ? [at, w[1]] : [w[0], at]);
   }
-  // Computer room
-  for (let i = 0; i < 4; i++) { table(130.4, -52 + i * 3.5, 1.6, 1.0, '#e8e4dc'); box(130.6, 0.75, -52 + i * 3.5, 0.1, 0.55, 0.8, '#222'); }
-  for (let i = 0; i < 3; i++) { table(126.2, -50 + i * 4, 1.6, 1.0, '#e8e4dc'); box(126.0, 0.75, -50 + i * 4, 0.1, 0.55, 0.8, '#222'); }
-  sign('COMPUTERS', 123.8, 3.0, -40, -R90, 3, 0.5);
-  // Classroom 1
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) desk(126.5 + c * 3, -21 + r * 5, -R90);
-  box(131.8, 1.0, -9, 0.08, 1.6, 5, '#ffffff');               // whiteboard
-  sign('CLASSROOM 1', 123.8, 3.0, -12, -R90, 3.2, 0.5);
-  // Staff room
-  box(128, 0, 19, 4, 0.8, 1.4, '#7b2d3a', true);              // sofa
-  table(128, 16, 2, 1, '#5b3418', 0.45);
-  box(131.4, 0, 6, 0.8, 0.95, 5, '#dfe6e9', true);            // kitchenette
-  box(131.4, 0, 2.2, 0.8, 1.9, 0.8, '#c8ccd0', true);         // fridge
-  sign('STAFF ROOM', 123.8, 3.0, 11, -R90, 3.2, 0.5);
+  const keepClear = [...STATIONS, ...Object.values(SPECIAL), ...STAFF_DOORS];
+  const clear = (x, z, pad = 0.6) => !doorPts.some(([dx, dz]) => Math.hypot(dx - x, dz - z) < 1.9 + pad) && !keepClear.some(s => Math.hypot(s.x - x, s.z - z) < 1.5 + pad);
+  const TYPE = {
+    library: 'library', lab: 'lab', computer: 'computer', office: 'hmoffice', staff: 'staff', jstaff: 'staff', atrium: 'atrium',
+    sfoyer: 'foyer', sentrance: 'foyer', jentrance: 'foyer', jreception: 'reception', jwaiting: 'foyer', gymlobby: 'foyer',
+    wc: 'wc', changing: 'changing', hall: 'hall', dining: 'dining', music: 'music', art: 'art', early: 'early',
+    firstaid: 'firstaid', jstore: 'store', store: 'store', pavilion: 'pavilion', tearoom: 'cafe', clubkitchen: 'cafe', club: 'club',
+    fitness: 'fitness', studio: 'studio', sportsoffice: 'office', gymA: 'court', gymB: 'court', auditorium: 'none', corridor: 'none', jcorridor: 'none',
+  };
+  const typeOf = r => TYPE[r.key] || (r.key.startsWith('EYC') ? ((r.x1 - r.x0) * (r.z1 - r.z0) > 25 ? 'kinder' : 'office')
+    : (r.x1 - r.x0) * (r.z1 - r.z0) >= 20 ? 'class' : 'office');
+  const along = (r, fn, step, m = 1.2) => {   // spots along the longer middle line
+    const lx = r.x1 - r.x0 >= r.z1 - r.z0;
+    for (let s = (lx ? r.x0 : r.z0) + m; s <= (lx ? r.x1 : r.z1) - m + 0.01; s += step) fn(lx ? s : (r.x0 + r.x1) / 2, lx ? (r.z0 + r.z1) / 2 : s, lx);
+  };
+  const KID = ['#e74c3c', '#f1c40f', '#3498db', '#2ecc71', '#e67e22', '#9b59b6'];
+  for (const b of BUILDINGS) for (const r of b.rooms) {
+    const w = r.x1 - r.x0, d = r.z1 - r.z0, cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
+    const T = typeOf(r);
+    if (T === 'class') {   // rows of desks facing a whiteboard on the north wall
+      for (let z = r.z0 + 2.4; z < r.z1 - 1.3; z += 2.8) for (let x = r.x0 + 1.5; x < r.x1 - 1.1; x += 2.6) if (clear(x, z)) desk(x, z, 0);
+      if (clear(cx, r.z0 + 0.3, -0.6)) box(cx, 1.0, r.z0 + 0.14, Math.min(4.5, w - 1.6), 1.4, 0.08, '#ffffff');
+    } else if (T === 'office') {
+      const x = cx, z = cz;
+      if (w > 2.4 && d > 2.4 && clear(x, z)) { table(x, z, Math.min(1.6, w - 1.4), 0.8, '#8a5a3c'); box(x, 0, z + 0.9, 0.5, 0.9, 0.5, '#1f3d7a'); }
+      if (clear(r.x0 + 0.4, cz)) box(r.x0 + 0.35, 0, cz, 0.45, 1.8, Math.min(2.2, d - 1), '#7a4b2a', true);
+    } else if (T === 'wc') {   // cubicles along the long wall + sinks opposite
+      const lx = w >= d;
+      for (let s = (lx ? r.x0 : r.z0) + 1.2; s < (lx ? r.x1 : r.z1) - 0.6; s += 1.3) {
+        if (lx) { if (clear(s, r.z0 + 0.8, -0.8)) box(s, 0, r.z0 + 0.65, 0.06, 1.8, 1.3, '#9fb3c8'); }
+        else if (clear(r.x0 + 0.8, s, -0.8)) box(r.x0 + 0.65, 0, s, 1.3, 1.8, 0.06, '#9fb3c8');
+      }
+      if (lx && clear(cx, r.z1 - 0.4, -0.5)) box(cx, 0, r.z1 - 0.35, Math.min(3, w - 1.5), 0.85, 0.5, '#f4f4f4');
+      if (!lx && clear(r.x1 - 0.4, cz, -0.5)) box(r.x1 - 0.35, 0, cz, 0.5, 0.85, Math.min(3, d - 1.5), '#f4f4f4');
+    } else if (T === 'library') {
+      for (let z = r.z0 + 1.5; z < r.z1 - 1; z += 2.6) if (clear(r.x0 + 2.2, z)) shelf(r.x0 + 2.2, z, 3, true, rnd);
+      if (clear(r.x1 - 2.4, cz)) { table(r.x1 - 2.4, cz - 1.5, 1.3, 2.4, '#c49a6c'); table(r.x1 - 2.4, cz + 1.8, 1.3, 2.4, '#c49a6c'); }
+    } else if (T === 'lab') {
+      box(cx + 1, 0, cz, 1.2, 0.9, d - 2.4, '#2b2f36', true); box(cx + 1, 0.9, cz, 1.25, 0.06, d - 2.4, '#e8ecef');
+    } else if (T === 'computer') {
+      for (let z = r.z0 + 1.4; z < r.z1 - 0.8; z += 1.8) if (clear(r.x1 - 0.8, z)) { table(r.x1 - 0.7, z, 1.0, 1.4, '#e8e4dc'); box(r.x1 - 0.5, 0.75, z, 0.1, 0.55, 0.8, '#222'); }
+    } else if (T === 'hmoffice') {   // the Headmistress's office
+      box(cx, 0.02, cz, w - 2, 0.04, d - 2, '#b1372f');
+      table(r.x0 + 3, cz, 1.4, 2.6, '#5b3418', 0.82); box(r.x0 + 1.6, 0, cz, 0.8, 1.5, 0.9, '#7b2d3a');
+      const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshLambertMaterial({ color: '#155c2e' }));
+      banner.position.set(r.x0 + 0.34, 1.9, cz); banner.rotation.y = R90; scene.add(banner);
+      const ct = new THREE.TextureLoader().load('assets/badge.svg'); ct.colorSpace = THREE.SRGBColorSpace;
+      const crest = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.2), new THREE.MeshBasicMaterial({ map: ct, transparent: true }));
+      crest.position.set(r.x0 + 0.37, 2.05, cz); crest.rotation.y = R90; scene.add(crest);
+      sign('HEADMISTRESS', r.x1 + 0.2, 3.0, cz, R90, 3.2, 0.5);
+    } else if (T === 'staff') {
+      if (clear(cx, r.z1 - 0.9)) box(cx, 0, r.z1 - 0.9, Math.min(4, w - 2), 0.8, 1.2, '#7b2d3a', true);
+      if (clear(cx, cz)) table(cx, cz, 1.8, 1, '#5b3418', 0.45);
+      if (clear(r.x0 + 0.5, cz)) box(r.x0 + 0.45, 0, cz, 0.7, 0.95, Math.min(4, d - 2), '#dfe6e9', true);
+    } else if (T === 'foyer' || T === 'reception' || T === 'atrium') {
+      if (T === 'atrium') { cyl(cx, 0, cz, 2.2, 0.5, '#a0453a', true); put(GEO.sphere, '#3f8a3a', cx, 1.2, cz, 3.2, 1.6, 3.2); }
+      if (T === 'reception' && clear(cx, r.z0 + 1.6)) box(cx, 0, r.z0 + 1.6, 4, 1.1, 0.9, '#c49a6c', true);
+      for (const [x, z] of [[r.x0 + 0.8, r.z0 + 0.8], [r.x1 - 0.8, r.z1 - 0.8]]) if (clear(x, z, -0.4)) { cyl(x, 0, z, 0.3, 0.5, '#a0453a', true); put(GEO.sphere, '#3a8f3a', x, 0.85, z, 0.8, 0.8, 0.8); }
+      if (T !== 'atrium' && clear(cx, r.z1 - 0.6)) bench(cx, r.z1 - 0.6, Math.min(3, w - 2), true, '#14285a');
+    } else if (T === 'changing') {
+      along(r, (x, z, lx) => { if (lx ? clear(x, r.z0 + 0.4, -0.4) : clear(r.x0 + 0.4, z, -0.4)) lx ? box(x, 0, r.z0 + 0.4, 1.1, 2, 0.7, '#2e5aa8', true) : box(r.x0 + 0.4, 0, z, 0.7, 2, 1.1, '#2e5aa8', true); }, 1.25, 0.8);
+      if (w >= d ? clear(cx, cz + 0.6) : clear(cx + 0.6, cz)) w >= d ? bench(cx, cz + 0.6, Math.min(4, w - 2)) : bench(cx + 0.6, cz, Math.min(4, d - 2), false);
+    } else if (T === 'hall') {
+      box(cx, 0, r.z0 + 1, w - 2, 0.6, 1.6, '#6e4128', true);
+      for (let z = r.z0 + 3; z < r.z1 - 0.8; z += 1.6) if (clear(cx, z)) bench(cx, z, w - 3, true, '#14285a');
+      sign('HALL', cx, 3.0, r.z1 - 0.2, Math.PI, 2.2, 0.5);
+    } else if (T === 'dining') {
+      for (let x = r.x0 + 2.2; x < r.x1 - 1.5; x += 3.4) if (clear(x, cz + 0.3)) { table(x, cz + 0.3, 1.1, 2.6, '#e8e4dc'); bench(x - 0.95, cz + 0.3, 2.6, false, '#2e5aa8'); bench(x + 0.95, cz + 0.3, 2.6, false, '#2e5aa8'); }
+      sign('DINING HALL', cx, 3.0, r.z1 - 0.2, Math.PI, 3.6, 0.6);
+    } else if (T === 'music') {
+      for (let i = 0; i < 4; i++) { const x = r.x0 + 1 + (i % 2) * 1.6, z = r.z1 - 1.8 + Math.floor(i / 2) * 0.9; if (clear(x, z, -0.4)) box(x, 0, z, 0.5, 0.45, 0.5, '#2e5aa8'); }
+    } else if (T === 'art') {
+      if (clear(cx, cz)) table(cx, cz - 0.5, 3.4, 1.6, '#f0e1c8');
+      for (let x = r.x0 + 1.2; x < r.x1 - 1; x += 2.2) if (clear(x, r.z0 + 0.5, -0.5)) box(x, 0, r.z0 + 0.4, 1.1, 1.6, 0.2, '#c49a6c');
+    } else if (T === 'kinder' || T === 'early') {
+      for (let i = 0; i < 4; i++) { const x = r.x0 + 1.6 + (i % 2) * 2.6, z = r.z0 + 1.6 + Math.floor(i / 2) * 2.6; if (x < r.x1 - 1 && z < r.z1 - 1) box(x, 0.02, z, 2.2, 0.05, 2.2, KID[(i + r.x0) % 6 | 0]); }
+      if (T === 'kinder' && clear(r.x1 - 1.4, r.z1 - 1.4)) table(r.x1 - 1.4, r.z1 - 1.4, 1.4, 0.9, '#f5d76e', 0.5);
+      if (T === 'early') { box(r.x0 + 1.2, 0, cz, 1.6, 0.9, 6, '#e8dcc4', true); box(r.x0 + 1.2, 0.9, cz, 1.7, 0.08, 6.1, '#2fa35a'); }   // the ramp
+    } else if (T === 'firstaid') {
+      if (clear(cx, r.z0 + 1.2)) box(cx, 0, r.z0 + 1.2, 1.0, 0.7, 2.0, '#f4f4f4', true);
+      sign('+', cx, 2.6, r.z1 - 0.2, Math.PI, 0.7, 0.7, { w: 96, h: 96, size: 80, bg: '#c62f35', border: '#fff' });
+    } else if (T === 'store') {
+      if (clear(cx, r.z1 - 0.7)) box(cx, 0, r.z1 - 0.7, Math.min(8, w - 3), 0.95, 1, '#6b4f36', true);
+      if (w > 6 && clear(r.x1 - 2, r.z0 + 3)) box(r.x1 - 2, 0, r.z0 + 3, 2.2, 1.0, 1.4, '#c0392b', true);   // ride-on mower
+      if (d > 8) shelf(r.x0 + 0.6, r.z0 + 4, 5, false, rnd);
+    } else if (T === 'pavilion') {
+      for (let i = 0; i < 2; i++) if (clear(r.x0 + 0.6, r.z0 + 1.6 + i * 2.2)) box(r.x0 + 0.6, 0, r.z0 + 1.6 + i * 2.2, 0.6, 2, 2, '#d4a52c', true);
+      if (clear(cx + 0.5, cz)) bench(cx + 0.5, cz, 3, false);
+    } else if (T === 'cafe') {
+      if (clear(r.x1 - 0.7, cz)) box(r.x1 - 0.7, 0, cz, 1.0, 1.0, Math.min(4, d - 2), '#5b3418', true);
+      if (w > 5 && clear(cx - 1, cz)) table(cx - 1, cz, 1.4, 1.4, '#c49a6c');
+    } else if (T === 'club') {
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) if (clear(r.x0 + 4 + i * 5, r.z0 + 3.5 + j * 5)) table(r.x0 + 4 + i * 5, r.z0 + 3.5 + j * 5, 2, 2, '#c49a6c');
+      for (let i = 0; i < 3; i++) if (clear(r.x0 + 0.6, r.z0 + 2 + i * 2.6)) box(r.x0 + 0.6, 0, r.z0 + 2 + i * 2.6, 0.6, 2, 2, '#d4a52c', true);
+      bench(cx, r.z1 - 0.6, 6, true, '#14285a');
+    } else if (T === 'fitness') {
+      for (let x = r.x0 + 2; x < r.x1 - 1.5; x += 3.2) {
+        if (clear(x, r.z0 + 1.4)) { box(x, 0, r.z0 + 1.4, 1.0, 1.2, 2.2, '#2b2f36', true); box(x, 1.2, r.z0 + 2.2, 0.8, 0.5, 0.1, '#4dabf7'); }   // treadmills
+        if (clear(x, r.z1 - 1.4)) { box(x, 0, r.z1 - 1.4, 1.8, 0.45, 0.6, '#b1372f', true); box(x, 0.45, r.z1 - 1.4, 2.4, 0.06, 0.06, '#888'); }   // benches + bars
+      }
+    } else if (T === 'studio') {
+      box(r.x1 - 0.2, 0, cz, 0.1, 2.2, d - 2, '#dfe6e9');   // mirror wall
+      for (let i = 0; i < 3; i++) if (clear(cx - 1.6 + i * 1.6, cz)) box(cx - 1.6 + i * 1.6, 0.02, cz, 1.2, 0.04, 2.6, ['#2e5aa8', '#b1372f', '#2fa35a'][i]);
+    } else if (T === 'court') {   // basketball hoops at both ends + court lines
+      for (const z of [r.z0 + 0.5, r.z1 - 0.5]) { box(cx, 2.8, z + (z < cz ? 0.0 : -0.1), 1.8, 1.1, 0.08, '#fff'); box(cx, 2.6, z + (z < cz ? 0.5 : -0.5), 0.5, 0.05, 0.5, '#e67e22'); }
+      box(cx, 0.07, cz, w - 1.2, 0.01, 0.1, '#ffffff'); cyl(cx, 0.065, cz, 1.6, 0.01, '#e9c48a');
+      sign(r.key === 'gymA' ? 'A' : 'B', cx, 5.2, r.z0 + 0.25, 0, 1.4, 1.4, { w: 128, h: 128, size: 90 });
+      if (r.key === 'gymA') { for (let i = 0; i < 8; i++) box(r.x0 + 0.3, 0, r.z0 + 4 + i * 1.6, 0.1, 3.2, 0.1, '#c49a6c'); for (let i = 0; i < 8; i++) box(r.x0 + 0.35, 0.3 + i * 0.38, r.z0 + 9.6, 0.1, 0.05, 11.2, '#c49a6c'); }
+    }
+  }
+  sign('LIBRARY', 120.8, 3.0, -49, R90, 2.6, 0.5); sign('SCIENCE LAB', 120.8, 3.0, -32.2, R90, 3.2, 0.5);
+  sign('COMPUTERS', 120.8, 3.0, -37.5, R90, 3, 0.5); sign('STAFF ROOM', 120.8, 3.0, 3.2, R90, 3.2, 0.5);
+  for (const r of ROOMS) if (/^(S1|J1|EYC1) /.test(r.key) || r.key === 'class1') {   // room-number plates by the doors
+    const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, label = r.key === 'class1' ? 'S1 18' : r.key, o = { w: 256, h: 96, size: 56 };
+    if (r.x0 === 124) sign(label, 123.8, 2.6, cz, -R90, 1.4, 0.5, o);
+    else if (r.x1 === 121) sign(label, 121.2, 2.6, cz, R90, 1.4, 0.5, o);
+    else if (r.z1 === 36 || r.z1 === 62.5) sign(label, cx, 2.6, r.z1 + 0.2, 0, 1.4, 0.5, o);
+    else if (r.z0 === 38 || r.z0 === 65) sign(label, cx, 2.6, r.z0 - 0.2, Math.PI, 1.4, 0.5, o);
+  }
 
   // ---------- Auditorium (north end of the Senior School)
   box(122, 0, -70, 18, 0.9, 3.5, '#6e4128', true);            // stage
@@ -698,105 +817,33 @@ export function buildWorld(scene) {
   box(122, 4.8, -67, 18, 0.3, 0.3, '#222');                   // lighting rig
   for (let i = 0; i < 6; i++) box(114 + i * 3.2, 4.4, -67, 0.4, 0.4, 0.4, '#333');
 
-  // ---------- Early Years Centre (curved glass front on the west)
-  for (let i = 0; i < 5; i++) box(55 + i * 3.2, 0, 13.2, 1.4, 0.7, 0.8, ['#e74c3c', '#f1c40f', '#3498db', '#2ecc71', '#9b59b6'][i], true);
-  for (let i = 0; i < 6; i++) box(56 + (i % 3) * 3, 0.02, 22 + Math.floor(i / 3) * 3, 2.6, 0.05, 2.6, ['#f1c40f', '#e74c3c', '#3498db', '#2ecc71', '#e67e22', '#9b59b6'][i]);
-  for (let i = 0; i < 4; i++) table(66, 16 + i * 5, 1.4, 0.9, '#f5d76e', 0.5);
-  box(53, 0, 36, 0.6, 1.2, 6, '#c49a6c', true);               // cubbies
-  {  // glass bulge in front of the west wall (looks like the curved EYC façade)
+  {  // EYC: curved glass bulge in front of the west wall
     const glass = new THREE.MeshLambertMaterial({ color: '#bfe3f5', transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
-    const cx = 54.75, cz = 27, rx = 5.1, rz = 17, a0 = -Math.PI * 0.82, a1 = -Math.PI * 0.18;
+    const cx = 28.2, cz = 43, rx = 2.2, rz = 14.3, a0 = -Math.PI * 0.82, a1 = -Math.PI * 0.18;
     const arc = new THREE.Mesh(new THREE.CylinderGeometry(rz, rz, 9.4, 32, 1, true, a0, a1 - a0), glass);
     arc.position.set(cx, 4.7, cz); arc.scale.set(rx / rz, 1, 1); scene.add(arc);
-    for (let a = a0; a <= a1 + 0.01; a += (a1 - a0) / 10) {      // mullions + collision along the curve
+    for (let a = a0; a <= a1 + 0.01; a += (a1 - a0) / 10) {
       const x = cx + Math.sin(a) * rx, z = cz + Math.cos(a) * rz;
       box(x, 0, z, 0.2, 9.4, 0.2, '#e9eef2'); col.addCircle(x, z, 0.3);
     }
   }
-
-  // ---------- Junior School: classrooms, dining hall, art, music
-  for (const [x0, rot] of [[70, 0], [84, 0], [98, 0], [112, 0]]) {
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) desk(x0 + 3 + c * 4, 47.2 + r * 2.8, rot);
-    box(x0 + 7, 1.0, 44.2, 6, 1.6, 0.08, '#ffffff');           // whiteboard
-  }
-  for (let i = 0; i < 3; i++) { cyl(101.5 + i * 1.2, 0, 44.6, 0.18, 0.5, '#a0453a'); put(GEO.sphere, '#3a8f3a', 101.5 + i * 1.2, 0.75, 44.6, 0.5, 0.5, 0.5); }
-  sign('JUNIOR A', 77, 3.0, 53.8, Math.PI, 2.4, 0.5); sign('JUNIOR B', 91, 3.0, 53.8, Math.PI, 2.4, 0.5);
-  sign('CLASSROOM 2', 105, 3.0, 53.8, Math.PI, 3.2, 0.5); sign('CLASSROOM 3', 119, 3.0, 53.8, Math.PI, 3.2, 0.5);
-  // Dining hall
-  for (const x of [76, 83]) for (const z of [61.5, 65]) { table(x, z, 5, 1.1, '#e8e4dc'); bench(x, z - 1, 5, true, '#2e5aa8'); bench(x, z + 1, 5, true, '#2e5aa8'); }
-  box(95.3, 0, 61.5, 1.0, 1.0, 3, '#c8ccd0', true);            // serving counter
-  sign('DINING HALL', 83, 3.0, 58.2, 0, 3.6, 0.6);
-  // Art room
-  for (let i = 0; i < 2; i++) table(102 + i * 5.5, 63, 3.4, 1.6, '#f0e1c8');
-  for (let i = 0; i < 3; i++) box(100 + i * 3.5, 0, 67.3, 1.1, 1.6, 0.2, '#c49a6c');   // easels
-  sign('ART', 104, 3.0, 58.2, 0, 1.8, 0.5);
-  // Music room
-  box(118, 0, 66.6, 1.6, 1.1, 0.8, '#1a1a1a', true);           // piano
-  box(118, 1.1, 66.4, 1.5, 0.05, 0.25, '#f2f2f2');
-  for (let i = 0; i < 6; i++) box(114 + (i % 3) * 2.5, 0, 60.5 + Math.floor(i / 3) * 2.5, 0.5, 0.45, 0.5, '#2e5aa8');
-  sign('MUSIC', 119, 3.0, 58.2, 0, 2.2, 0.5);
-  // North wing: hall + staff room
-  box(100, 0, 13.4, 10, 0.6, 2.4, '#6e4128', true);            // little stage
-  for (let r = 0; r < 4; r++) bench(100, 18 + r * 2.4, 8, true, '#14285a');
-  sign('HALL', 100, 3.0, 27.8, Math.PI, 2.2, 0.5);
-  box(104, 0, 38.6, 5, 0.8, 1.4, '#7b2d3a', true);             // sofa
-  table(104, 35.5, 2, 1, '#5b3418', 0.45);
-  box(92.6, 0, 33, 0.8, 0.95, 5, '#dfe6e9', true);             // kitchenette
-  sign('STAFF ROOM', 100, 3.0, 28.2, 0, 3.2, 0.5);
   // palm courtyard with a little playground
   const palm = (x, z) => {
     for (let i = 0; i < 6; i++) put(GEO.cyl, '#8a6a45', x + i * 0.08, 0.5 + i, z, 0.45 - i * 0.03, 1.02, 0.45 - i * 0.03);
     for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; put(GEO.box, '#3f8f3a', x + 0.5 + Math.cos(a) * 1.3, 6.1, z + Math.sin(a) * 1.3, 2.8, 0.12, 0.7, -a, 0, -0.35); }
     col.addCircle(x, z, 0.35);
   };
-  palm(76, 20); palm(86, 31); palm(77, 37); palm(88, 16);
-  box(82, 0, 22, 1.4, 2.2, 1.4, '#e74c3c', true); put(GEO.box, '#f1c40f', 82, 1.2, 25, 1.0, 0.12, 4.4, 0, -0.5);   // slide
-  for (const x of [72, 75]) { box(x, 0, 27, 0.15, 2.4, 0.15, '#2e5aa8'); }
-  box(73.5, 2.4, 27, 3.4, 0.15, 0.15, '#2e5aa8'); box(73.5, 0.6, 27, 0.8, 0.08, 0.4, '#f1c40f');           // swing
-  // glass walkway from the Junior School to the Senior School
-  {
+  palm(45, 47); palm(55, 51); palm(61, 46);
+  box(50, 0, 46.5, 1.4, 2.2, 1.4, '#e74c3c', true); put(GEO.box, '#f1c40f', 52.2, 1.2, 46.5, 4.4, 0.12, 1.0, 0, 0, 0.5);   // slide
+  for (const x of [57, 60]) box(x, 0, 53, 0.15, 2.4, 0.15, '#2e5aa8');
+  box(58.5, 2.4, 53, 3.4, 0.15, 0.15, '#2e5aa8'); box(58.5, 0.6, 53, 0.8, 0.08, 0.4, '#f1c40f');           // swing
+  {  // glass walkway from the Junior School east block to the Senior School
     const glass = new THREE.MeshLambertMaterial({ color: '#bfe3f5', transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
-    box(122, 2.9, 33, 5, 0.18, 22, '#e9eef2');
-    for (let z = 23; z < 44; z += 4) for (const x of [119.6, 124.4]) cyl(x, 0, z, 0.1, 2.9, '#e9eef2', true);
-    for (const x of [119.6, 124.4]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(22, 1.6), glass); m.position.set(x, 2, 33); m.rotation.y = Math.PI / 2; scene.add(m); }
+    box(122.5, 2.9, 29.5, 5, 0.18, 15, '#e9eef2'); box(113, 2.9, 37, 19, 0.18, 4, '#e9eef2');
+    for (let z = 23; z < 37; z += 4) for (const x of [120.1, 124.9]) cyl(x, 0, z, 0.1, 2.9, '#e9eef2', true);
+    for (let x = 106; x < 120; x += 4) for (const z of [35.1, 38.9]) cyl(x, 0, z, 0.1, 2.9, '#e9eef2', true);
+    for (const x of [120.1, 124.9]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(13, 1.6), glass); m.position.set(x, 2, 29.5); m.rotation.y = Math.PI / 2; scene.add(m); }
   }
-
-  // ---------- Pavilion (hall + changing rooms)
-  for (let i = 0; i < 3; i++) box(10.6, 0, 22 + i * 2.2, 0.6, 2, 2, '#d4a52c', true);   // trophy cases
-  box(16, 0, 32.8, 6, 1.0, 1.0, '#5b3418', true);              // tea bar
-  bench(16, 26, 6);
-  for (let i = 0; i < 8; i++) box(23.2 + (i % 4) * 1.8, 0, i < 4 ? 18.6 : 33.4, 1.1, 2.0, 0.7, i % 2 ? '#b1372f' : '#2e5aa8', true);
-  bench(26, 22.5, 4, false); 
-  sign('CHANGING ROOMS', 22.2, 3.0, 22, R90, 3.6, 0.5);
-
-  // ---------- Sports House (fitness room + sports office)
-  for (let i = 0; i < 3; i++) { box(19 + i * 4, 0, 72, 1.0, 1.2, 2.2, '#2b2f36', true); box(19 + i * 4, 1.2, 71.2, 0.8, 0.5, 0.1, '#4dabf7'); }   // treadmills
-  for (let i = 0; i < 3; i++) { box(19 + i * 4, 0, 56, 1.8, 0.45, 0.6, '#b1372f', true); box(19 + i * 4, 0.45, 56, 2.4, 0.06, 0.06, '#888'); }   // benches + bars
-  box(16.6, 0, 64, 0.6, 2.2, 8, '#dfe6e9');                    // mirror wall
-  for (let i = 0; i < 4; i++) box(24 + i * 1.6, 0.02, 64, 1.2, 0.04, 2.6, ['#2e5aa8', '#b1372f', '#2fa35a', '#d4a52c'][i]);   // yoga mats
-  table(37, 56, 3, 1.4, '#5b3418'); box(37, 0, 54.8, 0.8, 1.3, 0.8, '#14285a');
-  shelf(41.5, 66, 6, false, rnd);
-  sign('SPORTS OFFICE', 32.2, 3.0, 56, R90, 3.4, 0.5);
-
-  // ---------- Gymnasium (three basketball courts, halls A & B)
-  for (const x of [-15.5, 1.5]) for (const z of [50.5, 77.5]) { box(x, 2.8, z + (z < 60 ? 0.4 : -0.4), 1.8, 1.1, 0.08, '#fff'); box(x, 2.6, z + (z < 60 ? 0.9 : -0.9), 0.5, 0.05, 0.5, '#e67e22'); }
-  for (let i = 0; i < 4; i++) box(7, i * 0.18, 75.8, 2.4, 0.16, 1.6, i % 2 ? '#2e5aa8' : '#b1372f', i === 0);
-  box(-22, 0, 51.4, 1.6, 1.2, 1.0, '#555', true);              // ball cage
-  for (let i = 0; i < 6; i++) put(GEO.sphere, '#e67e22', -22.5 + (i % 3) * 0.5, 1.35, 51.2 + Math.floor(i / 3) * 0.4, 0.36, 0.36, 0.36);
-  for (let i = 0; i < 10; i++) box(-23.7, 0, 56 + i * 1.6, 0.1, 3.2, 0.1, '#c49a6c');   // wall bars
-  for (let i = 0; i < 8; i++) box(-23.6, 0.3 + i * 0.38, 63.2, 0.1, 0.05, 14.4, '#c49a6c');
-  sign('A', -15.5, 5.2, 50.2, 0, 1.4, 1.4, { w: 128, h: 128, size: 90 }); sign('B', 1.5, 5.2, 50.2, 0, 1.4, 1.4, { w: 128, h: 128, size: 90 });
-
-  // ---------- OBC / OGC Club
-  box(-87.4, 0, 61, 1.2, 1.1, 8, '#5b3418', true);             // bar counter
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) table(-106 + i * 6, 57 + j * 7, 2, 2, '#c49a6c');
-  for (let i = 0; i < 3; i++) box(-111.4, 0, 56 + i * 2.6, 0.6, 2, 2, '#d4a52c', true); // trophy cases
-  bench(-100, 69.4, 8, true, '#14285a');
-  // ---------- Maintenance store (corner building)
-  box(-125, 0, 75.3, 8, 0.95, 1, '#6b4f36', true);             // workbench
-  box(-121, 0, 60, 2.2, 1.0, 1.4, '#c0392b', true);            // ride-on mower
-  box(-131.2, 0, 72, 0.6, 1.5, 0.9, '#2b2f36');                // network cabinet
-  shelf(-131.4, 62, 6, false, rnd);
 
   // ---------- Pool
   for (const wr of POOL.water) {
@@ -811,7 +858,7 @@ export function buildWorld(scene) {
     box(wr.x0 - 0.25, 0, (wr.z0 + wr.z1) / 2, 0.5, 0.12, wr.z1 - wr.z0 + 1, '#ffffff');
     box(wr.x1 + 0.25, 0, (wr.z0 + wr.z1) / 2, 0.5, 0.12, wr.z1 - wr.z0 + 1, '#ffffff');
   }
-  for (let i = 1; i < 3; i++) box(36 + i * 3, 0.08, 26, 0.12, 0.12, 12, i % 2 ? '#b1372f' : '#ffffff');
+  box(21, 0.08, 42, 0.12, 0.12, 7, '#b1372f');
   // pool fence with gates
   const fenceLine = (xa, za, xb, zb, gapsAt = []) => {
     const alongX = za === zb, a = alongX ? xa : za, b = alongX ? xb : zb, fixed = alongX ? za : xa;
@@ -825,7 +872,7 @@ export function buildWorld(scene) {
       for (let s = s0; s <= s1; s += 0.6) { if (alongX) box(s, 0, fixed, 0.04, 1.15, 0.04, '#1d3b2a'); else box(fixed, 0, s, 0.04, 1.15, 0.04, '#1d3b2a'); }
     }
   };
-  fenceLine(33, 16, 49, 16, [40]); fenceLine(33, 36, 49, 36, [40]); fenceLine(49, 16, 49, 36); fenceLine(33, 16, 33, 36, [26]);
+  fenceLine(16.5, 36, 24.5, 36, [20.5]); fenceLine(16.5, 48, 24.5, 48, [20.5]); fenceLine(24.5, 36, 24.5, 48); fenceLine(16.5, 36, 16.5, 48, [39]);
 
   // ---------- Pitches: posts & goals
   const H = (x, z, alongX) => {   // rugby H posts
@@ -871,9 +918,9 @@ export function buildWorld(scene) {
     }
   }
   // benches & bleachers along pitches
-  for (let i = 0; i < 4; i++) bench(28 + i * 12, 4.2, 4, true, '#14285a');
-  for (let i = 0; i < 3; i++) bench(-52 + i * 12, 44.5, 4, true, '#14285a');
-  for (let i = 0; i < 3; i++) bench(-120 + i * 12, -15.8, 4, true, '#14285a');
+  for (let i = 0; i < 4; i++) bench(30 + i * 14, 25.6, 4, true, '#14285a');
+  for (let i = 0; i < 3; i++) bench(-52 + i * 14, 15, 4, true, '#14285a');
+  for (let i = 0; i < 3; i++) bench(-115 + i * 12, -20.5, 4, true, '#14285a');
 
   // ---------- Perimeter fence, gate & TBS sign
   const per = BOUNDS;
@@ -905,7 +952,7 @@ export function buildWorld(scene) {
   for (const [x0, z0, x1, z1] of PARKING) for (let x = x0 + 1.3; x < x1 - 1; x += 2.5) { if (cr() < 0.5) car(x, z0 + 2, 0); if (cr() < 0.45) car(x, z1 - 2, 0); }
 
   // building name signs
-  const SIGN_TEXT = { senior: 'SENIOR SCHOOL', auditorium: 'AUDITORIUM', early: 'EARLY YEARS CENTRE', junior: 'JUNIOR SCHOOL', junior2: 'JUNIOR SCHOOL', pavilion: 'PAVILION', gym: 'GYMNASIUM', club: 'OB & OG CLUB', sportshouse: 'SPORTS HOUSE', store: 'MAINTENANCE' };
+  const SIGN_TEXT = { senior: 'SENIOR SCHOOL', auditorium: 'AUDITORIUM', early: 'EARLY YEARS CENTRE', junior: 'JUNIOR SCHOOL', junior2: 'JUNIOR SCHOOL', junior3: 'JUNIOR SCHOOL', pavilion: 'PAVILION', gym: 'GYMNASIUM', club: 'OB & OG CLUB', sportshouse: 'SPORTS HOUSE', store: 'MAINTENANCE' };
   for (const b of BUILDINGS) {
     const s = b.sign; if (!s) continue; const y = 3.3, t = SIGN_TEXT[b.key];
     if (s.side === 'n') sign(t, s.at, y, b.z0 - 0.75, Math.PI);
@@ -941,6 +988,19 @@ export function buildWorld(scene) {
       case 'skim': box(x + 2, 0, z, 0.06, 1.8, 0.06, '#d4a52c'); break;
       case 'stage': box(x + 2, 0, z, 0.8, 1.6, 0.3, '#2b2f36', true); break;
       case 'mow': box(x + 1.5, 0, z, 1.6, 0.9, 1.0, '#c0392b', true); break;
+      case 'piano': box(x, 0, z - 0.6, 1.6, 1.1, 0.7, '#1a1a1a', true); box(x, 1.1, z - 0.4, 1.5, 0.05, 0.25, '#f2f2f2'); break;
+      case 'books': shelf(x - 0.6, z, 2.6, false, rnd); break;
+      case 'lab': box(x - 0.55, 0, z, 0.9, 1.0, 3, '#dfe6e9', true); cyl(x - 0.55, 1.0, z, 0.25, 0.3, '#9fb3c8'); break;
+      case 'computers': table(x - 0.5, z, 1.0, 1.4, '#e8e4dc'); box(x - 0.75, 0.75, z, 0.1, 0.55, 0.8, '#222'); break;
+      case 'projector': box(x + 0.6, 1.0, z, 0.08, 1.6, 3.2, '#ffffff'); break;
+      case 'pump': box(x - 0.8, 0, z - 1.0, 1.6, 1.2, 1.0, '#555', true);
+        for (let i = 0; i < 6; i++) put(GEO.sphere, '#e67e22', x - 1.3 + (i % 3) * 0.5, 1.35, z - 1.2 + Math.floor(i / 3) * 0.4, 0.36, 0.36, 0.36); break;
+      case 'mats': for (let i = 0; i < 4; i++) box(x + 1.6, i * 0.18, z, 2.4, 0.16, 1.6, i % 2 ? '#2e5aa8' : '#b1372f', i === 0); break;
+      case 'art': box(x - 1.2, 0, z + 0.3, 1.6, 0.9, 0.6, '#f0e1c8', true); break;
+      case 'plants': for (let i = 0; i < 3; i++) { cyl(x - 1.2 + i * 1.2, 0, z + 0.2, 0.18, 0.5, '#a0453a'); put(GEO.sphere, '#3a8f3a', x - 1.2 + i * 1.2, 0.75, z + 0.2, 0.5, 0.5, 0.5); } break;
+      case 'fruit': box(x + 0.4, 0, z, 1.0, 1.0, 1.6, '#c8ccd0', true); break;
+      case 'toys': for (let i = 0; i < 3; i++) box(x + 1.2 + i * 1.1, 0, z - 0.6, 0.9, 0.7, 0.8, KID[i], true); break;
+      case 'wifi': box(x - 0.8, 0, z, 0.6, 1.5, 0.9, '#2b2f36'); break;
     }
   }
   // fuse box & fire panels (wall-mounted)
@@ -958,7 +1018,7 @@ export function buildWorld(scene) {
     [BELL.x - 8, BELL.z - 8, BELL.x + 8, BELL.z + 8],
     ...PATHS.map(([x0, z0, x1, z1]) => [x0 - 1, z0 - 1, x1 + 1, z1 + 1]),
     ...PARKING.map(([x0, z0, x1, z1]) => [x0 - 2, z0 - 2, x1 + 2, z1 + 2]),
-    [COURTYARD.x0, COURTYARD.z0, COURTYARD.x1, COURTYARD.z1], [118, 20, 126, 46], [-6, -80, 2, -70],
+    [COURTYARD.x0, COURTYARD.z0, COURTYARD.x1, COURTYARD.z1], [102, 20, 126, 41], [-11, -85, -3, -77],
     [GATE.x0 - 3, 76, GATE.x1 + 3, 90],
   ];
   const free = (x, z) => !avoid.some(a => x > a[0] && x < a[2] && z > a[1] && z < a[3]) &&
@@ -969,11 +1029,10 @@ export function buildWorld(scene) {
   for (let x = -136; x <= 136; x += 4.5) { tryTree(x + tr() * 1.5, -83.5 + tr(), tr() < 0.5 ? 1 : 0); tryTree(x + tr() * 1.5, 83.5 - tr(), tr() < 0.4 ? 1 : 0); }
   for (let z = -80; z <= 80; z += 4.5) { tryTree(-137.5 + tr(), z, 1); tryTree(137.5 - tr(), z, tr() < 0.5 ? 1 : 2); }
   // tree lines between pitches (as on the campus map)
-  for (let z = -76; z < 46; z += 5) { tryTree(-81.5 + tr(), z, 1); tryTree(-74 + tr(), z, 0); tryTree(10.5 + tr(), z, 0); tryTree(-0.5 - tr(), z, 2); }
-  for (let x = -130; x < 0; x += 5) tryTree(x + tr() * 2, -8 + tr(), 0);
-  for (let x = 16; x < 80; x += 5) tryTree(x + tr() * 2, -38 + tr(), 2);
-  for (let z = -75; z < 10; z += 4) { tryTree(82 + tr() * 2, z, 0); tryTree(111 + tr(), z, 2); }
-  for (let x = -78; x < 0; x += 6) tryTree(x + tr() * 2, 52 + tr() * 2, 0);
+  for (let z = -76; z < 54; z += 5) { tryTree(-73 + tr() * 2, z, 0); tryTree(-68 + tr(), z, 1); tryTree(6 + tr(), z, 0); tryTree(-2 - tr(), z, 2); }
+  for (let x = -125; x < -78; x += 5) tryTree(x + tr() * 2, -14 + tr() * 3, 0);
+  for (let z = -75; z < 24; z += 4) { tryTree(96 + tr() * 3, z, 0); tryTree(101 + tr(), z, 2); }
+  for (let x = 78; x < 134; x += 5) tryTree(x + tr() * 2, 52 + tr() * 3, 0);
   for (let i = 0; i < 900 && trees.length < 420; i++) tryTree(-136 + tr() * 272, -82 + tr() * 164, Math.floor(tr() * 3));
   const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1, 6);
   const crownGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -1009,16 +1068,16 @@ export function buildWorld(scene) {
     box(x, 0, z, w, h, d, hr() < 0.7 ? '#f2efe8' : '#e8dcc4');
     put(GEO.cone4, hr() < 0.6 ? '#b5543a' : '#8d4a3a', x, h + 1.2, z, w, 2.4, d, Math.PI / 4);
   };
-  for (let x = -165; x < 165; x += 13) { if (x < 52 || x > 98) house(x + hr() * 3, 106 + hr() * 6); house(x + hr() * 3, -106 - hr() * 6); }
+  for (let x = -165; x < 165; x += 13) { if (x < 0 || x > 50) house(x + hr() * 3, 106 + hr() * 6); house(x + hr() * 3, -106 - hr() * 6); }
   for (let z = -80; z < 85; z += 13) { house(162 + hr() * 4, z); house(-163 - hr() * 4, z); }
 
   // Innovation Hub, across Máximo Tajes (not part of the game area)
-  box(75, 0, 110, 22, 6.6, 16, '#c8664a'); box(75, 6.6, 110, 22.6, 0.4, 16.6, '#efe6d6');
-  for (let x = 66; x < 85; x += 3.6) { box(x, 1.2, 101.9, 2.2, 1.3, 0.2, '#6d9ec4'); box(x, 4.2, 101.9, 2.2, 1.3, 0.2, '#6d9ec4'); }
-  sign('INNOVATION HUB', 75, 7.6, 101.6, 0, 7, 1.2);
+  box(25, 0, 108, 16, 6.6, 18, '#c8664a'); box(25, 6.6, 108, 16.6, 0.4, 18.6, '#efe6d6');
+  for (let x = 19; x < 32; x += 3.6) { box(x, 1.2, 98.9, 2.2, 1.3, 0.2, '#6d9ec4'); box(x, 4.2, 98.9, 2.2, 1.3, 0.2, '#6d9ec4'); }
+  sign('INNOVATION HUB', 25, 7.6, 98.6, 0, 7, 1.2);
   // Arias toilets by the Arias gate
-  box(-2, 0, -75, 4, 3, 6, '#c8664a', true); box(-2, 3, -75, 4.6, 0.3, 6.6, '#3a3f47');
-  sign('ARIAS WC', 0.2, 2.2, -75, Math.PI / 2, 2.6, 0.5);
+  box(-7, 0, -81, 6, 3, 5, '#c8664a', true); box(-7, 3, -81, 6.6, 0.3, 5.6, '#3a3f47');
+  sign('ARIAS WC', -7, 2.2, -78.4, 0, 2.6, 0.5);
 
   B.build(scene);
 

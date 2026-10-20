@@ -32,8 +32,8 @@ then open http://localhost:8000.
 
 ## Files
 - `index.html`, `style.css`: menus and HUD
-- `js/world.js`: the campus (layout taken from satellite imagery and OpenStreetMap)
-- `js/gim.js`: Gimkit-style characters and the inventory items
+- `js/world.js`: the campus (layout taken from the 2025 campus map and floor plans)
+- `js/gim.js`: Gimkit-style characters and the inventory items (official uniforms, PE, house T-shirts, sports kits)
 - `js/sim.js`: game rules, bots, the solo teachers, Headmistress orders
 - `js/online.js`: rooms, lobby, and keeping everyone's game in sync
 - `js/tasks.js`: mini-games

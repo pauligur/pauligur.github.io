@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, STATIONS, SPECIAL, BELL, STAFF_DOORS, BUILDINGS, FIELDS, POOL, BOUNDS, GATE, roomAt } from './world.js';
+import { buildWorld, STATIONS, SPECIAL, BELL, STAFF_DOORS, BUILDINGS, FIELDS, POOL, BOUNDS, GATE, PARKING, COURTYARD, roomAt } from './world.js';
 import { makeGim, animateGim, setGhost, disposeGim, nameTag, COLORS, ITEMS, PRESETS } from './gim.js';
 import { Sim, Nav, HM_ORDERS, PHRASES } from './sim.js';
 import { HostRoom, ClientRoom } from './online.js';
@@ -173,11 +173,12 @@ function renderInventory() {
   } else if (invTab === 'color') {
     for (const c of COLORS) card('', `<div class="thumb sw" style="background:${c}"></div>`, L.color === c, 0, false, () => { equip({ color: c }); sfx('pop'); });
   } else {
+    const slot = invTab === 'uniform' || invTab === 'kit' ? 'outfit' : invTab;   // uniforms & kits are outfits
     for (const it of ITEMS[invTab]) {
       const locked = !owns(invTab, it.id);
-      card(t('i_' + it.id), `<img class="thumb" src="${thumbs({ ...L, [invTab]: it.id }, invTab === 'hat' || invTab === 'hair' ? 'hat' : 'body')}" alt="">`, L[invTab] === it.id, it.price, locked, el => {
-        if (locked) tryBuy(it.price, () => { store.owned.push(invTab + ':' + it.id); equip({ [invTab]: it.id }); }, el);
-        else { equip({ [invTab]: it.id }); sfx('pop'); }
+      card(t('i_' + it.id), `<img class="thumb" src="${thumbs({ ...L, [slot]: it.id }, slot === 'hat' || slot === 'hair' ? 'hat' : 'body')}" alt="">`, L[slot] === it.id, it.price, locked, el => {
+        if (locked) tryBuy(it.price, () => { store.owned.push(invTab + ':' + it.id); equip({ [slot]: it.id }); }, el);
+        else { equip({ [slot]: it.id }); sfx('pop'); }
       });
     }
   }
@@ -800,7 +801,8 @@ function drawMap() {
   R(BOUNDS, '#64a148');
   for (const f of FIELDS) R(f, { rugby: '#74b555', football: '#74b555', hockey: '#3d8a6a', hockeyGrass: '#74b555', synthetic: '#46a85a', tennis: '#c4693c', padel: '#2f6fb8' }[f.kind]);
   R(POOL.deck, '#e9e5dc'); for (const w of POOL.water) R(w, '#29a8dd');
-  for (const pk of [{ x0: 40, z0: 70, x1: 112, z1: 78 }, { x0: -98, z0: 72, x1: -86, z1: 83 }]) R(pk, '#a7a6a0');
+  for (const [x0, z0, x1, z1] of PARKING) R({ x0, z0, x1, z1 }, '#a7a6a0');
+  R(COURTYARD, '#cdbf9d');
   R({ x0: GATE.x0, z0: 83, x1: GATE.x1, z1: 87 }, '#14285a');
   g.font = '600 13px Fredoka, sans-serif'; g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText('TBS', px((GATE.x0 + GATE.x1) / 2), pz(85.3));
   g.textAlign = 'center'; g.textBaseline = 'middle';

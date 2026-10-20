@@ -5,7 +5,7 @@ import { COLORS, ITEMS, PAULI } from './gim.js';
 import { cleanChat } from './chat.js';
 
 const BOT_NAMES = ['Sofi', 'Mateo', 'Valen', 'Juanchi', 'Isa', 'Tomi', 'Cata', 'Lu', 'Benja', 'Martu', 'Santi', 'Emi'];
-const ORDER_AREAS = ['library', 'gym', 'pool', 'dining', 'auditorium', 'art', 'music', 'early', 'tennis', 'chs', 'lab', 'computer', 'club', 'f2', 'hall', 'padel'];
+const ORDER_AREAS = ['library', 'gym', 'pool', 'dining', 'auditorium', 'art', 'music', 'early', 'tennis', 'h1', 'lab', 'computer', 'club', 'f2', 'hall', 'padel', 'fitness', 'courtyard', 'multi'];
 export const HM_ORDERS = { o_gym: 'gym', o_pool: 'pool', o_library: 'library', o_cafe: 'dining', o_work: null, o_run: undefined };
 export const PHRASES = ['ph_tasks', 'ph_where', 'ph_sus', 'ph_with', 'ph_skip', 'ph_notme'];
 const LINES_EN = ['I will not run in the corridors.', 'I will finish my homework.', 'I will be kind to my classmates.', 'I will not talk in the library.'];
@@ -13,9 +13,9 @@ const LINES_ES = ['No voy a correr en los pasillos.', 'Voy a terminar mis debere
 
 // Solo mode: three mean teachers on patrol
 const SOLO_TEACHERS = [
-  { id: 'cuff', name: 'Mr. Cuff', zone: 'fields', x: 0, z: -35, calm: 20, speed: 5.0, look: { color: '#d9965f', hat: 'none', hair: 'none', outfit: 'suit', acc: 'glasses', brows: true } },
+  { id: 'cuff', name: 'Mr. Cuff', zone: 'fields', x: -4, z: -40, calm: 20, speed: 5.0, look: { color: '#d9965f', hat: 'none', hair: 'none', outfit: 'suit', acc: 'glasses', brows: true } },
   { id: 'jones', name: 'Mr. Jones', zone: 'senior', x: 122, z: -20, calm: 40, speed: 5.3, look: { color: '#f2b48a', hat: 'none', hair: 'bob', hairColor: '#2b2b3a', outfit: 'suitNavy', acc: 'none', brows: true } },
-  { id: 'blount', name: 'Mr. Blount', zone: 'junior', x: 92, z: 23, calm: 60, speed: 5.6, look: { color: '#ffcf9e', hat: 'cap', hair: 'none', outfit: 'suitGrey', acc: 'whistle', brows: true } },
+  { id: 'blount', name: 'Mr. Blount', zone: 'junior', x: 100, z: 56, calm: 60, speed: 5.6, look: { color: '#ffcf9e', hat: 'cap', hair: 'none', outfit: 'suitGrey', acc: 'whistle', brows: true } },
 ];
 
 const inside = (p, b, m = 0) => p.x > b.x0 + m && p.x < b.x1 - m && p.z > b.z0 + m && p.z < b.z1 - m;
@@ -39,9 +39,9 @@ export class Nav {
     this.col = col; this.nodes = [];
     const add = (x, z) => { if (!col.blocked(x, z, 0.5)) this.nodes.push({ x, z, e: [] }); };
     for (let x = -134; x <= 134; x += 8) for (let z = -80; z <= 80; z += 8) { add(x, z); add(x + 4, z + 4); }
-    // gates in fences (pool, tennis, padel) and the strip behind the club
-    for (const [x, z] of [[40, 10.5], [40, 13.5], [30, 36.5], [30, 39.5], [22.5, 18], [-54, 50.5], [-54, 53.5],
-      [-84.5, 63], [-81.5, 63], [-74.5, 63], [-71.5, 63], [-98, 81], [-90, 78.5], [-84, 81]]) add(x, z);
+    // gates in fences (pool, tennis, padel)
+    for (const [x, z] of [[40, 14.5], [40, 17.5], [40, 34.5], [40, 37.5], [31.5, 26], [34.5, 26], [-47, 52.5], [-47, 55.5],
+      [-77.5, 66], [-74.5, 66], [-67.5, 66], [-64.5, 66]]) add(x, z);
     for (const b of BUILDINGS) {
       for (const d of b.doors || []) {
         const o = 1.5;
@@ -123,7 +123,7 @@ export class Sim {
     const add = (p) => { const r = { alive: true, x: 0, z: 0, ry: 0, moving: false, tasks: [], done: new Set(), frozenUntil: 0, points: 0, stars: 0, killReady: 15, bellUsed: false, sus: {}, path: [], ai: {}, ...p }; this.players.set(r.id, r); return r; };
     const tasksPer = mode === 'solo' ? 8 : 5;
     const randTasks = () => shuffle(STATIONS.map(s => s.id)).slice(0, tasksPer);
-    const botLook = () => ({ color: pick(COLORS), hat: freeItem('hat'), hair: freeItem('hair'), outfit: freeItem('outfit'), acc: freeItem('acc') });
+    const botLook = () => ({ color: pick(COLORS), hat: freeItem('hat'), hair: freeItem('hair'), outfit: freeItem(pick(['uniform', 'uniform', 'kit', 'outfit'])), acc: freeItem('acc') });
     const meRole = mode === 'solo' ? 'student' : role;
 
     if (mode === 'online') {
